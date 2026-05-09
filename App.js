@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, SafeAreaView, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { auth, database } from './firebaseConfig';
+import { auth, firestoreDb } from './firebaseConfig';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
-import { ref, set } from 'firebase/database';
+import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import TeamPlayerSetupScreen from './TeamPlayerSetupScreen';
 import TossScreen from './TossScreen';
 import LiveScoreboardScreen from './LiveScoreboardScreen';
+import MatchViewerScreen from './MatchViewerScreen';
 
 const SPORTS = [
   'Cricket',
@@ -18,6 +19,20 @@ const SPORTS = [
   'Volleyball',
   'Table Tennis',
 ];
+
+const fallbackTeam = (name) => ({
+  name,
+  players: ['Player 1', 'Player 2'],
+});
+
+function formatSessionTime(timestamp) {
+  if (!timestamp) return 'Unknown time';
+  return new Date(timestamp).toLocaleString();
+}
+
+function createSessionCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
 
 function SportSelectionScreen({ onBack, onSelectSport }) {
   return (
@@ -144,10 +159,43 @@ function CricketSetupScreen({ onBack, onStartMatch }) {
   );
 }
 
-function HomeScreen({ user, onStartNew }) {
-  const handleViewSession = () => {
-    Alert.alert('View a Session', 'Session viewer screen coming soon!');
-  };
+function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
+  const [activeTab, setActiveTab] = useState('menu');
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState('');
+  const [viewerCode, setViewerCode] = useState('');
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const matchesQuery = query(
+      collection(firestoreDb, 'matches'),
+      where('meta.createdBy', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      matchesQuery,
+      (snapshot) => {
+        const nextSessions = snapshot.docs
+          .map((sessionDoc) => ({
+            id: sessionDoc.id,
+            ...sessionDoc.data(),
+          }))
+          .sort((a, b) => (b?.meta?.createdAt || 0) - (a?.meta?.createdAt || 0));
+
+        setSessions(nextSessions);
+        setSessionsError('');
+        setSessionsLoading(false);
+      },
+      (error) => {
+        setSessionsError(error.message);
+        setSessionsLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, [user?.uid]);
 
   const handleSignOut = async () => {
     try {
@@ -157,16 +205,116 @@ function HomeScreen({ user, onStartNew }) {
     }
   };
 
+  const renderSessionRow = (session) => {
+    const team1Name = session?.teams?.team1?.name || 'Team 1';
+    const team2Name = session?.teams?.team2?.name || 'Team 2';
+    const currentInnings = session?.innings?.currentInnings === 2 ? 'second' : 'first';
+    const score = session?.innings?.[currentInnings]?.score || { runs: 0, wickets: 0, overs: '0.0' };
+    const status = session?.matchState?.status || 'created';
+    const sessionCode = session?.meta?.sessionCode || session?.sessionCode || 'NO CODE';
+
+    return (
+      <View key={session.id} style={styles.sessionRow}>
+        <View style={styles.sessionInfo}>
+          <Text style={styles.sessionTitle}>{team1Name} vs {team2Name}</Text>
+          <Text style={styles.sessionCode}>Code: {sessionCode}</Text>
+          <Text style={styles.sessionMeta}>{formatSessionTime(session?.meta?.createdAt)}</Text>
+          <Text style={styles.sessionMeta}>
+            {status.toUpperCase()}  |  {score.runs}/{score.wickets} ({score.overs})
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.continueButton} onPress={() => onResumeSession(session)}>
+          <Text style={styles.continueButtonText}>Continue</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
-    <View style={styles.card}>
+    <View style={styles.menuCard}>
       <Text style={styles.title}>Hello, {user.email}</Text>
-      <Text style={styles.subtitle}>Choose an option to continue</Text>
-      <TouchableOpacity style={styles.button} onPress={onStartNew}>
-        <Text style={styles.buttonText}>Start a New Session</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleViewSession}>
-        <Text style={styles.buttonTextSecondary}>View a Session</Text>
-      </TouchableOpacity>
+      <View style={styles.menuTabs}>
+        <TouchableOpacity
+          style={[styles.menuTab, activeTab === 'menu' && styles.menuTabActive]}
+          onPress={() => setActiveTab('menu')}
+        >
+          <Text style={[styles.menuTabText, activeTab === 'menu' && styles.menuTabTextActive]}>
+            Menu
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.menuTab, activeTab === 'history' && styles.menuTabActive]}
+          onPress={() => setActiveTab('history')}
+        >
+          <Text style={[styles.menuTabText, activeTab === 'history' && styles.menuTabTextActive]}>
+            History
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.menuTab, activeTab === 'viewer' && styles.menuTabActive]}
+          onPress={() => setActiveTab('viewer')}
+        >
+          <Text style={[styles.menuTabText, activeTab === 'viewer' && styles.menuTabTextActive]}>
+            Viewer
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'menu' ? (
+        <View>
+          <Text style={styles.subtitle}>Choose an option to continue</Text>
+          <TouchableOpacity style={styles.button} onPress={onStartNew}>
+            <Text style={styles.buttonText}>Start a New Session</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={() => setActiveTab('history')}>
+            <Text style={styles.buttonTextSecondary}>Session History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={() => setActiveTab('viewer')}>
+            <Text style={styles.buttonTextSecondary}>View by Code</Text>
+          </TouchableOpacity>
+        </View>
+      ) : activeTab === 'history' ? (
+        <View>
+          <Text style={styles.subtitle}>Previous sessions</Text>
+          {sessionsLoading ? (
+            <ActivityIndicator color="#e94560" />
+          ) : sessionsError ? (
+            <Text style={styles.emptyHistoryText}>{sessionsError}</Text>
+          ) : sessions.length === 0 ? (
+            <Text style={styles.emptyHistoryText}>No sessions yet</Text>
+          ) : (
+            <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
+              {sessions.map(renderSessionRow)}
+            </ScrollView>
+          )}
+        </View>
+      ) : (
+        <View>
+          <Text style={styles.subtitle}>Enter a session code</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Example: A1B2C3"
+            placeholderTextColor="#888"
+            autoCapitalize="characters"
+            value={viewerCode}
+            onChangeText={(value) => setViewerCode(value.toUpperCase())}
+          />
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => {
+              const trimmedCode = viewerCode.trim().toUpperCase();
+              if (!trimmedCode) {
+                Alert.alert('Session Code', 'Please enter a session code.');
+                return;
+              }
+              onViewSession(trimmedCode);
+            }}
+          >
+            <Text style={styles.buttonText}>View Live Session</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <TouchableOpacity style={styles.linkButton} onPress={handleSignOut}>
         <Text style={styles.link}>Sign Out</Text>
       </TouchableOpacity>
@@ -294,6 +442,7 @@ export default function App() {
   const [matchConfig, setMatchConfig] = useState(null);
   const [teamSetupData, setTeamSetupData] = useState(null);
   const [matchSession, setMatchSession] = useState(null);
+  const [viewerSessionCode, setViewerSessionCode] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -315,6 +464,7 @@ export default function App() {
 
   const handleStartMatch = (config) => {
     setMatchConfig(config);
+    setViewerSessionCode('');
     setScreen('teamPlayerSetup');
   };
 
@@ -323,55 +473,86 @@ export default function App() {
     setScreen('toss');
   };
 
+  const handleResumeSession = (session) => {
+    const teams = {
+      team1: session?.teams?.team1 || fallbackTeam('Team 1'),
+      team2: session?.teams?.team2 || fallbackTeam('Team 2'),
+    };
+    const battingTeamKey = session?.innings?.first?.battingTeamKey || 'team1';
+    const bowlingTeamKey =
+      session?.innings?.first?.bowlingTeamKey ||
+      (battingTeamKey === 'team1' ? 'team2' : 'team1');
+
+    setMatchConfig(session?.config || { overs: 20, players: 11 });
+    setTeamSetupData(null);
+    setMatchSession({
+      id: session.id || session?.meta?.matchId,
+      createdAt: session?.meta?.createdAt || Date.now(),
+      createdBy: session?.meta?.createdBy || user?.uid || null,
+      sessionCode: session?.meta?.sessionCode || session?.sessionCode || null,
+      config: session?.config || { overs: 20, players: 11 },
+      teams,
+      battingTeamKey,
+      bowlingTeamKey,
+      battingTeam: teams[battingTeamKey] || teams.team1,
+      bowlingTeam: teams[bowlingTeamKey] || teams.team2,
+    });
+    setScreen('liveScoring');
+  };
+
+  const handleViewSessionByCode = (sessionCode) => {
+    setViewerSessionCode(sessionCode);
+    setScreen('sessionViewer');
+  };
+
   const handleSelectBattingTeam = (battingTeamKey) => {
     if (!matchConfig || !teamSetupData) return;
 
-    const isTeam1Batting = battingTeamKey === 'team1';
     const team1Name = (teamSetupData.team1Name || matchConfig.team1 || 'Team 1').trim();
     const team2Name = (teamSetupData.team2Name || matchConfig.team2 || 'Team 2').trim();
     const team1Players = teamSetupData.team1Players?.length ? teamSetupData.team1Players : ['Player 1', 'Player 2'];
     const team2Players = teamSetupData.team2Players?.length ? teamSetupData.team2Players : ['Player 1', 'Player 2'];
-    const battingTeam = {
-      name: isTeam1Batting ? team1Name : team2Name,
-      players: isTeam1Batting ? team1Players : team2Players,
+    const teams = {
+      team1: { name: team1Name, players: team1Players },
+      team2: { name: team2Name, players: team2Players },
     };
-    const bowlingTeam = {
-      name: isTeam1Batting ? team2Name : team1Name,
-      players: isTeam1Batting ? team2Players : team1Players,
-    };
+    const bowlingTeamKey = battingTeamKey === 'team1' ? 'team2' : 'team1';
 
     const nextMatchSession = {
       id: `match-${Date.now()}`,
       createdAt: Date.now(),
       createdBy: user?.uid || null,
+      sessionCode: createSessionCode(),
       config: matchConfig,
-      battingTeam,
-      bowlingTeam,
+      teams,
+      battingTeamKey,
+      bowlingTeamKey,
+      battingTeam: teams[battingTeamKey],
+      bowlingTeam: teams[bowlingTeamKey],
     };
     setMatchSession(nextMatchSession);
-    set(ref(database, `matches/${nextMatchSession.id}`), {
+    setDoc(doc(firestoreDb, 'matches', nextMatchSession.id), {
       meta: {
         matchId: nextMatchSession.id,
         sport: 'Cricket',
+        sessionCode: nextMatchSession.sessionCode,
         createdBy: nextMatchSession.createdBy,
         createdAt: nextMatchSession.createdAt,
         updatedAt: nextMatchSession.createdAt,
       },
       config: nextMatchSession.config,
       teams: {
-        team1: nextMatchSession.battingTeam,
-        team2: nextMatchSession.bowlingTeam,
+        team1: teams.team1,
+        team2: teams.team2,
         batting: nextMatchSession.battingTeam,
         bowling: nextMatchSession.bowlingTeam,
       },
-      deliveries: [],
       innings: {
         currentInnings: 1,
         target: null,
         first: {
-          battingTeamKey: 'team1',
-          bowlingTeamKey: 'team2',
-          deliveries: [],
+          battingTeamKey,
+          bowlingTeamKey,
           score: { runs: 0, wickets: 0, overs: '0.0', legalBalls: 0, runRate: 0 },
           extras: { wide: 0, noBall: 0, bye: 0, legBye: 0, total: 0 },
           partnership: { runs: 0, balls: 0 },
@@ -381,9 +562,8 @@ export default function App() {
           stats: { batting: [], bowling: [] },
         },
         second: {
-          battingTeamKey: 'team2',
-          bowlingTeamKey: 'team1',
-          deliveries: [],
+          battingTeamKey: bowlingTeamKey,
+          bowlingTeamKey: battingTeamKey,
           score: { runs: 0, wickets: 0, overs: '0.0', legalBalls: 0, runRate: 0 },
           extras: { wide: 0, noBall: 0, bye: 0, legBye: 0, total: 0 },
           partnership: { runs: 0, balls: 0 },
@@ -401,6 +581,9 @@ export default function App() {
       matchState: {
         status: 'created',
       },
+      sessionCode: nextMatchSession.sessionCode,
+    }).catch((error) => {
+      Alert.alert('Firestore Error', error.message);
     });
     setScreen('liveScoring');
   };
@@ -435,10 +618,26 @@ export default function App() {
           ) : screen === 'liveScoring' && matchSession ? (
             <LiveScoreboardScreen
               matchSession={matchSession}
-              onBack={() => setScreen('toss')}
+              onBack={() => setScreen('home')}
+            />
+          ) : screen === 'sessionViewer' && viewerSessionCode ? (
+            <MatchViewerScreen
+              sessionCode={viewerSessionCode}
+              onBack={() => setScreen('home')}
             />
           ) : (
-            <HomeScreen user={user} onStartNew={() => setScreen('sportSelect')} />
+            <HomeScreen
+              user={user}
+              onStartNew={() => {
+                setMatchConfig(null);
+                setTeamSetupData(null);
+                setMatchSession(null);
+                setViewerSessionCode('');
+                setScreen('sportSelect');
+              }}
+              onResumeSession={handleResumeSession}
+              onViewSession={handleViewSessionByCode}
+            />
           )
         ) : showSignUp ? (
           <SignUpScreen onToggle={() => setShowSignUp(false)} />
@@ -466,6 +665,14 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 1,
     borderColor: '#2a2a40',
+  },
+  menuCard: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#2a2a40',
+    maxHeight: '88%',
   },
   title: {
     fontSize: 24,
@@ -520,6 +727,83 @@ const styles = StyleSheet.create({
   },
   linkButton: {
     marginTop: 8,
+  },
+  menuTabs: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a2a40',
+    overflow: 'hidden',
+    marginTop: 12,
+    marginBottom: 18,
+  },
+  menuTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#0f0f1a',
+  },
+  menuTabActive: {
+    backgroundColor: '#e94560',
+  },
+  menuTabText: {
+    color: '#a0a0a0',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  menuTabTextActive: {
+    color: '#fff',
+  },
+  historyList: {
+    maxHeight: 360,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f0f1a',
+    borderWidth: 1,
+    borderColor: '#2a2a40',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  sessionInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  sessionTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  sessionCode: {
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  sessionMeta: {
+    color: '#a0a0a0',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  continueButton: {
+    backgroundColor: '#e94560',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  continueButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  emptyHistoryText: {
+    color: '#a0a0a0',
+    textAlign: 'center',
+    paddingVertical: 24,
+    fontSize: 14,
   },
   sportList: {
     maxHeight: 320,

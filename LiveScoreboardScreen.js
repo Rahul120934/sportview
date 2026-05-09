@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,16 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
-import { onValue, ref, set } from 'firebase/database';
-import { database } from './firebaseConfig';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+} from 'firebase/firestore';
+import { firestoreDb } from './firebaseConfig';
 import { computeInningsState, createDeliveryEvent } from './cricketScoring';
 
 const scoringButtons = [
@@ -40,43 +48,100 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
   const [showCustomScoreModal, setShowCustomScoreModal] = useState(false);
   const [customScoreValue, setCustomScoreValue] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
+  const [deliveriesHydrated, setDeliveriesHydrated] = useState(false);
+  const summaryWriteKeyRef = useRef(null);
 
   const matchId = matchSession?.id;
 
   useEffect(() => {
     if (!matchId) return;
-    const matchRef = ref(database, `matches/${matchId}`);
-    const unsubscribe = onValue(matchRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
+    summaryWriteKeyRef.current = null;
+    setIsHydrated(false);
+    const matchRef = doc(firestoreDb, 'matches', matchId);
+    const unsubscribe = onSnapshot(
+      matchRef,
+      (snapshot) => {
+        const data = snapshot.exists() ? snapshot.data() : null;
+        if (!data) {
+          setIsHydrated(true);
+          return;
+        }
+
+        const hydratedTeams = {
+          team1:
+            data?.teams?.team1 ||
+            matchSession?.teams?.team1 ||
+            (matchSession?.battingTeamKey === 'team1'
+              ? matchSession?.battingTeam
+              : matchSession?.bowlingTeamKey === 'team1'
+              ? matchSession?.bowlingTeam
+              : null) ||
+            defaultTeam('Team 1'),
+          team2:
+            data?.teams?.team2 ||
+            matchSession?.teams?.team2 ||
+            (matchSession?.battingTeamKey === 'team2'
+              ? matchSession?.battingTeam
+              : matchSession?.bowlingTeamKey === 'team2'
+              ? matchSession?.bowlingTeam
+              : null) ||
+            defaultTeam('Team 2'),
+        };
+
+        setMatchData({
+          ...data,
+          teams: hydratedTeams,
+        });
+        setActiveInnings(data?.innings?.currentInnings === 2 ? 2 : 1);
         setIsHydrated(true);
-        return;
+      },
+      (error) => {
+        console.warn('Match listener failed', error);
+        setIsHydrated(true);
       }
-
-      const hydratedTeams = {
-        team1: data?.teams?.team1 || matchSession?.battingTeam || defaultTeam('Team 1'),
-        team2: data?.teams?.team2 || matchSession?.bowlingTeam || defaultTeam('Team 2'),
-      };
-      const first = data?.innings?.first || {};
-      const second = data?.innings?.second || {};
-
-      setMatchData({
-        ...data,
-        teams: hydratedTeams,
-      });
-      setFirstInningsDeliveries(
-        Array.isArray(first.deliveries)
-          ? first.deliveries
-          : Array.isArray(data.deliveries)
-          ? data.deliveries
-          : []
-      );
-      setSecondInningsDeliveries(Array.isArray(second.deliveries) ? second.deliveries : []);
-      setActiveInnings(data?.innings?.currentInnings === 2 ? 2 : 1);
-      setIsHydrated(true);
-    });
+    );
     return () => unsubscribe();
-  }, [matchId, matchSession?.battingTeam, matchSession?.bowlingTeam]);
+  }, [
+    matchId,
+    matchSession?.battingTeam,
+    matchSession?.battingTeamKey,
+    matchSession?.bowlingTeam,
+    matchSession?.bowlingTeamKey,
+    matchSession?.teams,
+  ]);
+
+  useEffect(() => {
+    if (!matchId) return;
+    setDeliveriesHydrated(false);
+    const deliveriesRef = collection(firestoreDb, 'matches', matchId, 'deliveries');
+    const deliveriesQuery = query(deliveriesRef, orderBy('sequence', 'asc'));
+    const unsubscribe = onSnapshot(
+      deliveriesQuery,
+      (snapshot) => {
+        const deliveries = snapshot.docs
+          .map((deliveryDoc) => ({
+            id: deliveryDoc.id,
+            ...deliveryDoc.data(),
+          }))
+          .sort(
+            (a, b) =>
+              (a.sequence || 0) - (b.sequence || 0) ||
+              (a.createdAt || 0) - (b.createdAt || 0)
+          );
+
+        setFirstInningsDeliveries(
+          deliveries.filter((delivery) => !delivery.innings || delivery.innings === 1)
+        );
+        setSecondInningsDeliveries(deliveries.filter((delivery) => delivery.innings === 2));
+        setDeliveriesHydrated(true);
+      },
+      (error) => {
+        console.warn('Delivery listener failed', error);
+        setDeliveriesHydrated(true);
+      }
+    );
+    return () => unsubscribe();
+  }, [matchId]);
 
   const config = useMemo(
     () => matchData?.config || matchSession?.config || { overs: 20, players: 11 },
@@ -85,14 +150,18 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
   const maxBalls = (config?.overs || 20) * 6;
   const teams = useMemo(
     () => ({
-      team1: matchData?.teams?.team1 || matchSession?.battingTeam || defaultTeam('Team 1'),
-      team2: matchData?.teams?.team2 || matchSession?.bowlingTeam || defaultTeam('Team 2'),
+      team1: matchData?.teams?.team1 || matchSession?.teams?.team1 || defaultTeam('Team 1'),
+      team2: matchData?.teams?.team2 || matchSession?.teams?.team2 || defaultTeam('Team 2'),
     }),
-    [matchData?.teams?.team1, matchData?.teams?.team2, matchSession?.battingTeam, matchSession?.bowlingTeam]
+    [matchData?.teams?.team1, matchData?.teams?.team2, matchSession?.teams?.team1, matchSession?.teams?.team2]
   );
 
-  const firstInningsBattingKey = matchData?.innings?.first?.battingTeamKey || 'team1';
-  const firstInningsBowlingKey = firstInningsBattingKey === 'team1' ? 'team2' : 'team1';
+  const firstInningsBattingKey =
+    matchData?.innings?.first?.battingTeamKey || matchSession?.battingTeamKey || 'team1';
+  const firstInningsBowlingKey =
+    matchData?.innings?.first?.bowlingTeamKey ||
+    matchSession?.bowlingTeamKey ||
+    (firstInningsBattingKey === 'team1' ? 'team2' : 'team1');
   const secondInningsBattingKey = firstInningsBowlingKey;
   const secondInningsBowlingKey = firstInningsBattingKey;
 
@@ -124,8 +193,6 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
 
   const currentSession = activeInnings === 1 ? firstInningsSession : secondInningsSession;
   const currentDeliveries = activeInnings === 1 ? firstInningsDeliveries : secondInningsDeliveries;
-  const setCurrentDeliveries =
-    activeInnings === 1 ? setFirstInningsDeliveries : setSecondInningsDeliveries;
   const inningsClosedByBalls = innings.score.legalBalls >= maxBalls;
   const targetRuns = firstInnings.score.runs + 1;
   const secondInningsWon = activeInnings === 2 && secondInnings.score.runs >= targetRuns;
@@ -141,14 +208,16 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
     : null;
   const createdBy = matchData?.meta?.createdBy || matchSession?.createdBy || null;
   const createdAt = matchData?.meta?.createdAt || matchSession?.createdAt || Date.now();
+  const sessionCode = matchData?.meta?.sessionCode || matchSession?.sessionCode || matchData?.sessionCode || null;
 
   useEffect(() => {
-    if (!matchId || !isHydrated) return;
+    if (!matchId || !isHydrated || !deliveriesHydrated) return;
 
     const payload = {
       meta: {
         matchId,
         sport: 'Cricket',
+        sessionCode,
         createdBy,
         createdAt,
         updatedAt: Date.now(),
@@ -160,14 +229,12 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
         batting: currentSession.battingTeam,
         bowling: currentSession.bowlingTeam,
       },
-      deliveries: currentDeliveries,
       innings: {
         currentInnings: activeInnings,
         target: activeInnings === 2 ? targetRuns : null,
         first: {
           battingTeamKey: firstInningsBattingKey,
           bowlingTeamKey: firstInningsBowlingKey,
-          deliveries: firstInningsDeliveries,
           score: firstInnings.score,
           extras: firstInnings.extras,
           partnership: firstInnings.partnership,
@@ -182,7 +249,6 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
         second: {
           battingTeamKey: secondInningsBattingKey,
           bowlingTeamKey: secondInningsBowlingKey,
-          deliveries: secondInningsDeliveries,
           score: secondInnings.score,
           extras: secondInnings.extras,
           partnership: secondInnings.partnership,
@@ -210,18 +276,35 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
         ballsRemaining: activeInnings === 2 ? ballsRemaining : null,
         runsRequired: activeInnings === 2 ? runsRequired : null,
       },
+      sessionCode,
     };
 
-    set(ref(database, `matches/${matchId}`), payload);
+    const summaryKey = JSON.stringify({
+      config,
+      teams: payload.teams,
+      innings: payload.innings,
+      timeline: payload.timeline,
+      stats: payload.stats,
+      matchState: payload.matchState,
+    });
+
+    if (summaryWriteKeyRef.current === summaryKey) return;
+    summaryWriteKeyRef.current = summaryKey;
+
+    setDoc(doc(firestoreDb, 'matches', matchId), payload, { merge: true }).catch((error) => {
+      summaryWriteKeyRef.current = null;
+      console.warn('Match summary write failed', error);
+    });
   }, [
     matchId,
     isHydrated,
+    deliveriesHydrated,
+    sessionCode,
     createdBy,
     createdAt,
     config,
     teams,
     currentSession,
-    currentDeliveries,
     activeInnings,
     targetRuns,
     firstInningsBattingKey,
@@ -252,37 +335,65 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
       currentStriker?.name || null,
       currentBowler?.name || null
     );
-    setCurrentDeliveries((prev) => [...prev, delivery]);
+    const deliveryWithMeta = {
+      ...delivery,
+      innings: activeInnings,
+      sequence: currentDeliveries.length + 1,
+      scorerId: createdBy,
+      updatedAt: Date.now(),
+    };
+    setDoc(
+      doc(firestoreDb, 'matches', matchId, 'deliveries', delivery.id),
+      deliveryWithMeta
+    ).catch((error) => {
+      console.warn('Delivery write failed', error);
+    });
   };
 
   const undoLastBall = () => {
-    setCurrentDeliveries((prev) => prev.slice(0, -1));
+    const lastDelivery = currentDeliveries[currentDeliveries.length - 1];
+    if (!lastDelivery) return;
+    deleteDoc(doc(firestoreDb, 'matches', matchId, 'deliveries', lastDelivery.id)).catch(
+      (error) => {
+        console.warn('Undo delivery failed', error);
+      }
+    );
   };
 
   const applyEditToDelivery = (type, value = 0) => {
     if (!editingDeliveryId) return;
-    setCurrentDeliveries((prev) =>
-      prev.map((delivery) =>
-        delivery.id === editingDeliveryId
-          ? {
-              ...createDeliveryEvent(
-                type,
-                value,
-                delivery.strikerName || currentStriker?.name || null,
-                delivery.bowlerName || currentBowler?.name || null
-              ),
-              id: delivery.id,
-              createdAt: delivery.createdAt,
-            }
-          : delivery
-      )
-    );
+    const existingDelivery = currentDeliveries.find((delivery) => delivery.id === editingDeliveryId);
+    if (!existingDelivery) return;
+    const editedDelivery = {
+      ...createDeliveryEvent(
+        type,
+        value,
+        existingDelivery.strikerName || currentStriker?.name || null,
+        existingDelivery.bowlerName || currentBowler?.name || null
+      ),
+      id: existingDelivery.id,
+      innings: existingDelivery.innings || activeInnings,
+      sequence: existingDelivery.sequence || currentDeliveries.length,
+      scorerId: existingDelivery.scorerId || createdBy,
+      createdAt: existingDelivery.createdAt,
+      updatedAt: Date.now(),
+    };
+    setDoc(
+      doc(firestoreDb, 'matches', matchId, 'deliveries', existingDelivery.id),
+      editedDelivery
+    ).catch((error) => {
+      console.warn('Delivery edit failed', error);
+    });
     setEditingDeliveryId(null);
   };
 
   const deleteDelivery = () => {
     if (!editingDeliveryId) return;
-    setCurrentDeliveries((prev) => prev.filter((d) => d.id !== editingDeliveryId));
+    deleteDoc(doc(firestoreDb, 'matches', matchId, 'deliveries', editingDeliveryId)).catch(
+      (error) => {
+        console.warn('Delivery delete failed', error);
+      }
+    );
     setEditingDeliveryId(null);
   };
 
@@ -307,6 +418,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
           <Text style={styles.matchTitle}>
             {currentSession.battingTeam.name} vs {currentSession.bowlingTeam.name}
           </Text>
+          {sessionCode ? <Text style={styles.sessionCode}>Session Code: {sessionCode}</Text> : null}
           <Text style={styles.metaText}>Innings {activeInnings}</Text>
           <Text style={styles.scoreText}>
             {innings.score.runs}/{innings.score.wickets}
@@ -499,6 +611,12 @@ const styles = StyleSheet.create({
     color: '#AAA',
     fontSize: 13,
     marginBottom: 6,
+  },
+  sessionCode: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 4,
   },
   scoreText: {
     color: '#00FF87',
