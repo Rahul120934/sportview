@@ -32,7 +32,7 @@ const scoringButtons = [
   { label: 'No Ball', type: 'noBall' },
   { label: 'Bye', type: 'bye' },
   { label: 'Leg Bye', type: 'legBye' },
-  { label: 'Wicket', type: 'wicket' },
+  { label: 'Wicket', type: 'wicket-prompt' },
 ];
 
 const defaultTeam = (name) => ({
@@ -47,6 +47,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
   const [activeInnings, setActiveInnings] = useState(1);
   const [editingDeliveryId, setEditingDeliveryId] = useState(null);
   const [showCustomScoreModal, setShowCustomScoreModal] = useState(false);
+  const [showWicketModal, setShowWicketModal] = useState(false);
   const [customScoreValue, setCustomScoreValue] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
   const [deliveriesHydrated, setDeliveriesHydrated] = useState(false);
@@ -194,14 +195,20 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
 
   const currentSession = activeInnings === 1 ? firstInningsSession : secondInningsSession;
   const currentDeliveries = activeInnings === 1 ? firstInningsDeliveries : secondInningsDeliveries;
+  const maxWickets = (currentSession?.battingTeam?.players || []).length > 0
+    ? (currentSession.battingTeam.players.length - 1)
+    : 10;
+  
   const inningsClosedByBalls = innings.score.legalBalls >= maxBalls;
+  const inningsClosedByWickets = innings.score.wickets >= maxWickets;
+  
   const targetRuns = firstInnings.score.runs + 1;
   const secondInningsWon = activeInnings === 2 && secondInnings.score.runs >= targetRuns;
-  const inningsClosed = inningsClosedByBalls || secondInningsWon;
+  const inningsClosed = inningsClosedByBalls || inningsClosedByWickets || secondInningsWon;
   const ballsRemaining = Math.max(maxBalls - innings.score.legalBalls, 0);
   const runsRequired =
     activeInnings === 2 ? Math.max(targetRuns - secondInnings.score.runs, 0) : null;
-  const isMatchCompleted = activeInnings === 2 && (secondInningsWon || inningsClosedByBalls);
+  const isMatchCompleted = activeInnings === 2 && (secondInningsWon || inningsClosedByBalls || inningsClosedByWickets);
   const winnerName = isMatchCompleted
     ? secondInnings.score.runs >= targetRuns
       ? secondInningsSession.battingTeam.name
@@ -340,12 +347,25 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
       Alert.alert('Unauthorized', 'Only the match creator can record deliveries.');
       return;
     }
+    
+    if (type === 'wicket-prompt') {
+      setShowWicketModal(true);
+      return;
+    }
+
     const delivery = createDeliveryEvent(
       type,
-      value,
+      typeof value === 'number' ? value : 0,
       currentStriker?.name || null,
       currentBowler?.name || null
     );
+    
+    // Add wicket type if passed in value (for custom wicket types)
+    if (type === 'wicket' && typeof value === 'string') {
+      delivery.wicketType = value;
+      delivery.label = `W-${value.substring(0,2)}`;
+    }
+
     const deliveryWithMeta = {
       ...delivery,
       innings: activeInnings,
@@ -600,6 +620,34 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
                 setShowCustomScoreModal(false);
                 setCustomScoreValue('');
               }}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent visible={showWicketModal} animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Select Wicket Type</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 10 }}>
+              {['Bowled', 'Caught', 'LBW', 'Run Out', 'Stumped', 'Hit Wicket'].map((wType) => (
+                <TouchableOpacity
+                  key={wType}
+                  style={[styles.scoreButton, { width: '48%', marginBottom: 10, paddingVertical: 12 }]}
+                  onPress={() => {
+                    recordDelivery('wicket', wType);
+                    setShowWicketModal(false);
+                  }}
+                >
+                  <Text style={styles.scoreButtonText}>{wType}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={[styles.modalCancel, { marginTop: 10 }]}
+              onPress={() => setShowWicketModal(false)}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
