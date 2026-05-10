@@ -11,13 +11,6 @@ import MatchViewerScreen from './MatchViewerScreen';
 
 const SPORTS = [
   'Cricket',
-  'Football',
-  'Badminton',
-  'Hockey',
-  'Tennis',
-  'Basketball',
-  'Volleyball',
-  'Table Tennis',
 ];
 
 const fallbackTeam = (name) => ({
