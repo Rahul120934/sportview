@@ -187,6 +187,72 @@ export default function PublicMatchViewer({ sessionCode }) {
       </View>
     );
   }
+
+  // ─── Generic Point Spectator UI ──────────────────────────────────────────
+  if (matchData?.generic) {
+    const gen = matchData.generic;
+    const tennisPoints = ['0', '15', '30', '40', 'Ad'];
+    const isTennis = gen.sportId === 'tennis';
+    const team1Name = matchData?.teams?.team1?.name || 'Team A';
+    const team2Name = matchData?.teams?.team2?.name || 'Team B';
+
+    return (
+      <View style={s.container}>
+        <View style={s.topBar}>
+          <View style={s.logoRow}>
+            <Activity color="#0047FF" size={22} />
+            <Text style={s.logoText}>STADIUM LIVE</Text>
+          </View>
+          <View style={s.liveRow}>
+            <View style={[s.liveDot, { backgroundColor: isCompleted ? '#10B981' : '#DC2626' }]} />
+            <Text style={[s.liveText, isCompleted && { color: '#10B981' }]}>
+              {isCompleted ? 'FINAL' : 'LIVE'}
+            </Text>
+          </View>
+        </View>
+        <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+          <View style={[s.heroCard, { backgroundColor: '#0047FF', paddingVertical: 40 }]}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 3, marginBottom: 20 }}>
+              {gen.sport.toUpperCase()} — SETS: {gen.sets.team1} - {gen.sets.team2}
+            </Text>
+            <View style={s.teamsRow}>
+              <View style={s.teamBlock}>
+                <Text style={[s.teamName, { color: 'rgba(255,255,255,0.8)' }]}>{team1Name}</Text>
+                <Text style={[s.teamScore, { color: '#FFF', fontSize: 72 }]}>
+                  {isTennis ? tennisPoints[gen.tennisIdx?.team1 || 0] : gen.points.team1}
+                </Text>
+                {isTennis && <Text style={{ color: '#A3E635', fontWeight: '800', fontSize: 14 }}>Games: {gen.points.team1}</Text>}
+              </View>
+              <View style={s.vsBox}><Text style={[s.vsText, { color: 'rgba(255,255,255,0.3)' }]}>VS</Text></View>
+              <View style={s.teamBlock}>
+                <Text style={[s.teamName, { color: 'rgba(255,255,255,0.8)' }]}>{team2Name}</Text>
+                <Text style={[s.teamScore, { color: '#FFF', fontSize: 72 }]}>
+                  {isTennis ? tennisPoints[gen.tennisIdx?.team2 || 0] : gen.points.team2}
+                </Text>
+                {isTennis && <Text style={{ color: '#A3E635', fontWeight: '800', fontSize: 14 }}>Games: {gen.points.team2}</Text>}
+              </View>
+            </View>
+            {gen.winner && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 32, backgroundColor: '#FFFFFF22', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30 }}>
+                <Trophy color="#F59E0B" size={20} />
+                <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 18 }}>{gen.winner} WINS!</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.installBanner}>
+            <Text style={s.installTitle}>🚀 Follow more sports on Stadium Live</Text>
+            <Text style={s.installDesc}>Cricket, Football, Tennis, and more. All-in-one scoring.</Text>
+            <TouchableOpacity style={s.installBtn} onPress={() => Linking.openURL('https://expo.dev')}>
+              <Download color="#FFF" size={16} />
+              <Text style={s.installBtnText}>Download Stadium Live</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      </View>
+    );
+  }
   // ──────────────────────────────────────────────────────────────────────────
 
   return (

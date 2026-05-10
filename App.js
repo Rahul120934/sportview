@@ -9,6 +9,8 @@ import { CheckCircle2, ChevronRight, Activity, Target, Users, Minus, Plus, Searc
 import QRCode from 'react-native-qrcode-svg';
 import FootballSetupScreen from './FootballSetupScreen';
 import FootballScoreboardScreen from './FootballScoreboardScreen';
+import GenericSetupScreen from './GenericSetupScreen';
+import GenericPointScoreboardScreen from './GenericPointScoreboardScreen';
 
 // Dynamic viewer URL - works on localhost and production
 const getViewerUrl = (sessionCode) => {
@@ -217,11 +219,22 @@ function CricketSetupScreen({ onBack, onStartMatch }) {
   );
 }
 
-function HomeScreen({ user, onStartNew, onStartFootball, onResumeSession, onViewSession }) {
+function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
   const [activeTab, setActiveTab] = useState('menu');
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [viewerCode, setViewerCode] = useState('');
+  const [sportModalVisible, setSportModalVisible] = useState(false);
+
+  const sports = [
+    { id: 'cricket', name: 'Cricket', emoji: '🏏', color: '#0047FF', desc: 'Runs, Overs, Wickets' },
+    { id: 'football', name: 'Football', emoji: '⚽', color: '#10B981', desc: 'Goals, Halves, Timer' },
+    { id: 'badminton', name: 'Badminton', emoji: '🏸', color: '#8B5CF6', desc: 'Points, Sets, Best of 3' },
+    { id: 'volleyball', name: 'Volleyball', emoji: '🏐', color: '#F59E0B', desc: 'Points, Best of 5 Sets' },
+    { id: 'table_tennis', name: 'Table Tennis', emoji: '🏓', color: '#EC4899', desc: 'Fast-paced 11 pt sets' },
+    { id: 'tennis', name: 'Tennis', emoji: '🎾', color: '#A3E635', desc: 'Sets, Games, 15-30-40' },
+  ];
+
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -283,19 +296,58 @@ function HomeScreen({ user, onStartNew, onStartFootball, onResumeSession, onView
                 <Plus color="#0047FF" size={24} />
               </View>
               <Text style={homeStyles.newMatchTitle}>Start a New Match</Text>
-              <Text style={homeStyles.newMatchDesc}>Choose your sport and initialize professional-grade scoring with custom teams and rules.</Text>
-              {/* Sport selector */}
-              <View style={homeStyles.sportRow}>
-                <TouchableOpacity style={homeStyles.sportBtn} onPress={onStartNew}>
-                  <Text style={homeStyles.sportBtnEmoji}>🏏</Text>
-                  <Text style={homeStyles.sportBtnLabel}>Cricket</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[homeStyles.sportBtn, { borderColor: '#10B981' }]} onPress={onStartFootball}>
-                  <Text style={homeStyles.sportBtnEmoji}>⚽</Text>
-                  <Text style={[homeStyles.sportBtnLabel, { color: '#10B981' }]}>Football</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={homeStyles.newMatchDesc}>Initialize professional-grade scoring for multiple sports with custom rules.</Text>
+              
+              <TouchableOpacity 
+                style={homeStyles.selectSportBtn} 
+                onPress={() => setSportModalVisible(true)}
+              >
+                <Activity color="#0047FF" size={18} />
+                <Text style={homeStyles.selectSportBtnText}>CHOOSE SPORT</Text>
+                <ChevronRight color="#0047FF" size={16} />
+              </TouchableOpacity>
             </View>
+
+            {/* Sport Selection Modal */}
+            <Modal
+              visible={sportModalVisible}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setSportModalVisible(false)}
+            >
+              <View style={homeStyles.modalBackdrop}>
+                <View style={homeStyles.modalCard}>
+                  <View style={homeStyles.modalHeader}>
+                    <Text style={homeStyles.modalTitle}>Select Sport</Text>
+                    <TouchableOpacity onPress={() => setSportModalVisible(false)}>
+                      <Text style={homeStyles.closeBtn}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView style={homeStyles.sportList}>
+                    {sports.map(s => (
+                      <TouchableOpacity 
+                        key={s.id} 
+                        style={homeStyles.sportItem}
+                        onPress={() => {
+                          setSportModalVisible(false);
+                          onStartNew(s.id);
+                        }}
+                      >
+                        <View style={[homeStyles.sportIcon, { backgroundColor: s.color + '15' }]}>
+                          <Text style={homeStyles.sportEmoji}>{s.emoji}</Text>
+                        </View>
+                        <View style={homeStyles.sportInfo}>
+                          <Text style={homeStyles.sportName}>{s.name}</Text>
+                          <Text style={homeStyles.sportDesc}>{s.desc}</Text>
+                        </View>
+                        <ChevronRight color="#D1D5DB" size={16} />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+            </Modal>
+
 
             <View style={homeStyles.joinCard}>
               <View style={homeStyles.joinHeaderRow}>
@@ -580,12 +632,9 @@ export default function App() {
   const [showSignUp, setShowSignUp] = useState(false);
   const [user, setUser] = useState(null);
   const [screen, setScreen] = useState('home');
-  const [matchConfig, setMatchConfig] = useState(null);
-  const [teamSetupData, setTeamSetupData] = useState(null);
-  const [matchSession, setMatchSession] = useState(null);
-  const [viewerSessionCode, setViewerSessionCode] = useState('');
-  const [sessionCreatedModal, setSessionCreatedModal] = useState(false);
   const [footballSession, setFootballSession] = useState(null);
+  const [genericSession, setGenericSession] = useState(null);
+  const [selectedSport, setSelectedSport] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -595,11 +644,19 @@ export default function App() {
     return unsubscribe;
   }, []);
 
+  const handleStartMatchFlow = (sport) => {
+    setSelectedSport(sport);
+    setViewerSessionCode('');
+    if (sport === 'cricket') setScreen('cricketSetup');
+    else if (sport === 'football') setScreen('footballSetup');
+    else setScreen('genericSetup'); // For Badminton, Volley, etc.
+  };
+
   const handleStartMatch = (config) => {
     setMatchConfig(config);
-    setViewerSessionCode('');
     setScreen('teamPlayerSetup');
   };
+
 
   const handleTeamSetupComplete = (teamData) => {
     setTeamSetupData(teamData);
@@ -650,6 +707,27 @@ export default function App() {
     setScreen('footballScoring');
   };
 
+  const handleStartGenericMatch = async (config) => {
+    const sessionCode = await generateUniqueSessionCode();
+    const matchId = `match-${Date.now()}`;
+    const session = {
+      id: matchId,
+      sessionCode,
+      ...config,
+      createdAt: Date.now(),
+      createdBy: user?.uid || null,
+    };
+    setGenericSession(session);
+    setDoc(doc(firestoreDb, 'matches', matchId), {
+      meta: { matchId, sport: config.sport, sessionCode, createdBy: user?.uid || null, createdAt: Date.now(), updatedAt: Date.now() },
+      teams: { team1: { name: config.team1 }, team2: { name: config.team2 } },
+      generic: { points: { team1: 0, team2: 0 }, sets: { team1: 0, team2: 0 }, sport: config.sport, sportId: config.sportId },
+      matchState: { status: 'created' },
+      sessionCode,
+    }).catch(e => Alert.alert('Error', e.message));
+    setScreen('genericScoring');
+  };
+
   const handleSelectBattingTeam = async (battingTeamKey) => {
     if (!matchConfig || !teamSetupData) return;
     const team1Name = (teamSetupData.team1Name || matchConfig.team1 || 'Team 1').trim();
@@ -692,7 +770,9 @@ export default function App() {
           screen === 'sessionViewer' ? <MatchViewerScreen sessionCode={viewerSessionCode} onBack={() => setScreen('home')} /> :
           screen === 'footballSetup' ? <FootballSetupScreen onBack={() => setScreen('home')} onStartMatch={handleStartFootballMatch} /> :
           screen === 'footballScoring' ? <FootballScoreboardScreen matchSession={footballSession} onBack={() => setScreen('home')} /> :
-          <HomeScreen user={user} onStartNew={() => setScreen('cricketSetup')} onStartFootball={() => setScreen('footballSetup')} onResumeSession={handleResumeSession} onViewSession={handleViewSessionByCode} />
+          screen === 'genericSetup' ? <GenericSetupScreen sport={selectedSport} onBack={() => setScreen('home')} onStartMatch={handleStartGenericMatch} /> :
+          screen === 'genericScoring' ? <GenericPointScoreboardScreen matchSession={genericSession} onBack={() => setScreen('home')} /> :
+          <HomeScreen user={user} onStartNew={handleStartMatchFlow} onResumeSession={handleResumeSession} onViewSession={handleViewSessionByCode} />
         ) : showSignUp ? <SignUpScreen onToggle={() => setShowSignUp(false)} /> : <SignInScreen onToggle={() => setShowSignUp(true)} />}
 
         {/* Session Created Modal */}
@@ -870,6 +950,20 @@ const setupStyles = StyleSheet.create({
   sportBtn: { flex: 1, borderWidth: 2, borderColor: '#0047FF', borderRadius: 14, paddingVertical: 16, alignItems: 'center', gap: 4 },
   sportBtnEmoji: { fontSize: 28 },
   sportBtnLabel: { fontSize: 14, fontWeight: '800', color: '#0047FF' },
+  selectSportBtn: { backgroundColor: '#EEF2FF', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  selectSportBtnText: { flex: 1, color: '#0047FF', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: '#FFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 24, fontWeight: '900', color: '#111827' },
+  closeBtn: { color: '#6B7280', fontWeight: '700' },
+  sportList: { marginBottom: 24 },
+  sportItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 16 },
+  sportIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  sportEmoji: { fontSize: 24 },
+  sportInfo: { flex: 1 },
+  sportName: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  sportDesc: { fontSize: 12, color: '#6B7280', marginTop: 2 }
 });
 
 const modalStyles = StyleSheet.create({
