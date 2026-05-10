@@ -1,47 +1,21 @@
 import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Image, Modal, Linking, Clipboard, Platform } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Image, Modal } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { auth, firestoreDb } from './firebaseConfig';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, setDoc, where, getDocs, limit } from 'firebase/firestore';
-import { CheckCircle2, ChevronRight, Activity, Target, Users, Minus, Plus, Search, Home as HomeIcon, History as HistoryIcon, ShieldCheck, Share2, Copy, Trophy, ScanLine, CircleDot, Lock, Mail, Eye, EyeOff } from 'lucide-react-native';
+import { CheckCircle2, ChevronRight, Activity, Target, Users, Minus, Plus, Search, Home as HomeIcon, History as HistoryIcon, ShieldCheck, Share2, Copy, Trophy, ScanLine, CircleDot } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
-
-// Dynamic viewer URL - works on localhost and production
-const getViewerUrl = (sessionCode) => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `${window.location.origin}/match/${sessionCode}`;
-  }
-  return `https://gp-hackathon-4d77f.web.app/match/${sessionCode}`;
-};
 
 import TeamPlayerSetupScreen from './TeamPlayerSetupScreen';
 import TossScreen from './TossScreen';
 import LiveScoreboardScreen from './LiveScoreboardScreen';
 import MatchViewerScreen from './MatchViewerScreen';
-import PublicMatchViewer from './PublicMatchViewer';
 
 const SPORTS = ['Cricket'];
 
 const fallbackTeam = (name) => ({ name, players: ['Player 1', 'Player 2'] });
-
-// Detect if this is a public viewer URL (e.g. /match/ABC123)
-function getPublicSessionCode() {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const match = window.location.pathname.match(/^\/match\/([A-Z0-9]{4,10})$/i);
-    return match ? match[1].toUpperCase() : null;
-  }
-  return null;
-}
-
-// Only auto-show public viewer on the deployed Firebase domain, NOT on localhost
-const IS_DEPLOYED_WEB = Platform.OS === 'web' &&
-  typeof window !== 'undefined' &&
-  !window.location.hostname.includes('localhost') &&
-  !window.location.hostname.includes('127.0.0.1');
-
-const PUBLIC_SESSION_CODE = getPublicSessionCode();
 
 function formatSessionTime(timestamp) {
   if (!timestamp) return 'Unknown time';
@@ -89,20 +63,20 @@ function BottomTabBar({ activeTab, onTabSelect }) {
   return (
     <View style={appStyles.bottomTabBar}>
       <TouchableOpacity style={appStyles.tabItem} onPress={() => onTabSelect('menu')}>
-        <View style={[appStyles.tabIconWrap, activeTab === 'menu' && appStyles.tabIconWrapActive]}>
-          <Target color={activeTab === 'menu' ? "#FFFFFF" : "#6B7280"} size={22} />
+        <View style={[appStyles.tabIconContainer, activeTab === 'menu' && appStyles.tabIconActive]}>
+          <Target color={activeTab === 'menu' ? "#FFFFFF" : "#6B7280"} size={20} />
         </View>
         <Text style={[appStyles.tabText, activeTab === 'menu' && appStyles.tabTextActive]}>Scoring</Text>
       </TouchableOpacity>
       <TouchableOpacity style={appStyles.tabItem} onPress={() => onTabSelect('history')}>
-        <View style={[appStyles.tabIconWrap, activeTab === 'history' && appStyles.tabIconWrapActive]}>
-          <HistoryIcon color={activeTab === 'history' ? "#FFFFFF" : "#6B7280"} size={22} />
+        <View style={[appStyles.tabIconContainer, activeTab === 'history' && appStyles.tabIconActive]}>
+          <HistoryIcon color={activeTab === 'history' ? "#FFFFFF" : "#6B7280"} size={20} />
         </View>
         <Text style={[appStyles.tabText, activeTab === 'history' && appStyles.tabTextActive]}>History</Text>
       </TouchableOpacity>
       <TouchableOpacity style={appStyles.tabItem} onPress={() => onTabSelect('viewer')}>
-        <View style={[appStyles.tabIconWrap, activeTab === 'viewer' && appStyles.tabIconWrapActive]}>
-          <ScanLine color={activeTab === 'viewer' ? "#FFFFFF" : "#6B7280"} size={22} />
+        <View style={[appStyles.tabIconContainer, activeTab === 'viewer' && appStyles.tabIconActive]}>
+          <ScanLine color={activeTab === 'viewer' ? "#FFFFFF" : "#6B7280"} size={20} />
         </View>
         <Text style={[appStyles.tabText, activeTab === 'viewer' && appStyles.tabTextActive]}>Viewer</Text>
       </TouchableOpacity>
@@ -412,79 +386,23 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
 
 // ... SignInScreen, SignUpScreen (can keep them similar or style them)
 function SignInScreen({ onToggle }) {
+  // same implementation...
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-
+  const handleSignIn = async () => { /* ... */ };
   return (
-    <View style={authStyles.container}>
-      {/* Header */}
-      <View style={authStyles.header}>
-        <View style={appStyles.logoRow}>
-          <Activity color="#0047FF" size={28} />
-          <Text style={appStyles.logoText}>STADIUM LIVE</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={authStyles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={authStyles.heroBox}>
-          <View style={authStyles.heroIcon}>
-            <Lock color="#0047FF" size={32} />
-          </View>
-          <Text style={authStyles.heroTitle}>Welcome Back</Text>
-          <Text style={authStyles.heroSub}>Sign in to your Stadium Live account</Text>
-        </View>
-
-        <View style={authStyles.card}>
-          <Text style={authStyles.fieldLabel}>EMAIL ADDRESS</Text>
-          <View style={authStyles.inputRow}>
-            <Mail color="#9CA3AF" size={18} />
-            <TextInput
-              style={authStyles.input}
-              placeholder="you@example.com"
-              placeholderTextColor="#9CA3AF"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
-
-          <Text style={[authStyles.fieldLabel, { marginTop: 20 }]}>PASSWORD</Text>
-          <View style={authStyles.inputRow}>
-            <Lock color="#9CA3AF" size={18} />
-            <TextInput
-              style={authStyles.input}
-              placeholder="••••••••"
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(s => !s)}>
-              {showPassword ? <EyeOff color="#9CA3AF" size={18} /> : <Eye color="#9CA3AF" size={18} />}
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={authStyles.primaryBtn}
-            onPress={async () => {
-              setLoading(true);
-              try { await signInWithEmailAndPassword(auth, email, password); }
-              catch(e){ Alert.alert('Sign In Failed', e.message); }
-              setLoading(false);
-            }}
-          >
-            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={authStyles.primaryBtnText}>Sign In</Text>}
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity onPress={onToggle} style={authStyles.switchRow}>
-          <Text style={authStyles.switchText}>Don't have an account? </Text>
-          <Text style={authStyles.switchLink}>Create one →</Text>
+    <View style={appStyles.container}>
+      <TopBar email="" onSignOut={() => {}} />
+      <View style={{ padding: 20, justifyContent: 'center', flex: 1 }}>
+        <Text style={homeStyles.dashTitle}>Welcome Back</Text>
+        <TextInput style={[homeStyles.joinInput, { borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }]} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
+        <TextInput style={[homeStyles.joinInput, { borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 20 }]} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+        <TouchableOpacity style={[homeStyles.newMatchBtn, { alignSelf: 'stretch' }]} onPress={async () => { setLoading(true); try { await signInWithEmailAndPassword(auth, email, password); } catch(e){ Alert.alert('Error', e.message); } setLoading(false); }}>
+          {loading ? <ActivityIndicator color="#FFF" /> : <Text style={homeStyles.newMatchBtnText}>Sign In</Text>}
         </TouchableOpacity>
-      </ScrollView>
+        <TouchableOpacity onPress={onToggle} style={{ marginTop: 20 }}><Text style={{ color: '#0047FF', textAlign: 'center' }}>Create an account</Text></TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -493,75 +411,18 @@ function SignUpScreen({ onToggle }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-
   return (
-    <View style={authStyles.container}>
-      <View style={authStyles.header}>
-        <View style={appStyles.logoRow}>
-          <Activity color="#0047FF" size={28} />
-          <Text style={appStyles.logoText}>STADIUM LIVE</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={authStyles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={authStyles.heroBox}>
-          <View style={authStyles.heroIcon}>
-            <Activity color="#0047FF" size={32} />
-          </View>
-          <Text style={authStyles.heroTitle}>Join Stadium Live</Text>
-          <Text style={authStyles.heroSub}>Create your free scorer account today</Text>
-        </View>
-
-        <View style={authStyles.card}>
-          <Text style={authStyles.fieldLabel}>EMAIL ADDRESS</Text>
-          <View style={authStyles.inputRow}>
-            <Mail color="#9CA3AF" size={18} />
-            <TextInput
-              style={authStyles.input}
-              placeholder="you@example.com"
-              placeholderTextColor="#9CA3AF"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
-
-          <Text style={[authStyles.fieldLabel, { marginTop: 20 }]}>PASSWORD</Text>
-          <View style={authStyles.inputRow}>
-            <Lock color="#9CA3AF" size={18} />
-            <TextInput
-              style={authStyles.input}
-              placeholder="Min. 8 characters"
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(s => !s)}>
-              {showPassword ? <EyeOff color="#9CA3AF" size={18} /> : <Eye color="#9CA3AF" size={18} />}
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={authStyles.primaryBtn}
-            onPress={async () => {
-              setLoading(true);
-              try { await createUserWithEmailAndPassword(auth, email, password); }
-              catch(e){ Alert.alert('Sign Up Failed', e.message); }
-              setLoading(false);
-            }}
-          >
-            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={authStyles.primaryBtnText}>Create Account</Text>}
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity onPress={onToggle} style={authStyles.switchRow}>
-          <Text style={authStyles.switchText}>Already have an account? </Text>
-          <Text style={authStyles.switchLink}>Sign in →</Text>
+    <View style={appStyles.container}>
+      <TopBar email="" onSignOut={() => {}} />
+      <View style={{ padding: 20, justifyContent: 'center', flex: 1 }}>
+        <Text style={homeStyles.dashTitle}>Join Stadium Live</Text>
+        <TextInput style={[homeStyles.joinInput, { borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }]} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
+        <TextInput style={[homeStyles.joinInput, { borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 20 }]} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+        <TouchableOpacity style={[homeStyles.newMatchBtn, { alignSelf: 'stretch' }]} onPress={async () => { setLoading(true); try { await createUserWithEmailAndPassword(auth, email, password); } catch(e){ Alert.alert('Error', e.message); } setLoading(false); }}>
+          {loading ? <ActivityIndicator color="#FFF" /> : <Text style={homeStyles.newMatchBtnText}>Sign Up</Text>}
         </TouchableOpacity>
-      </ScrollView>
+        <TouchableOpacity onPress={onToggle} style={{ marginTop: 20 }}><Text style={{ color: '#0047FF', textAlign: 'center' }}>Already have an account? Sign In</Text></TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -648,10 +509,7 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F4F6' }}>
         <StatusBar style="dark" />
-        {/* Public web viewer — no auth needed */}
-        {(PUBLIC_SESSION_CODE || IS_DEPLOYED_WEB) ? (
-          <PublicMatchViewer sessionCode={PUBLIC_SESSION_CODE} />
-        ) : user ? (
+        {user ? (
           screen === 'cricketSetup' ? <CricketSetupScreen onBack={() => setScreen('home')} onStartMatch={handleStartMatch} /> :
           screen === 'teamPlayerSetup' ? <TeamPlayerSetupScreen config={matchConfig} onBack={() => setScreen('cricketSetup')} onComplete={handleTeamSetupComplete} /> :
           screen === 'toss' ? <TossScreen teams={teamSetupData} onBack={() => setScreen('teamPlayerSetup')} onSelectBattingTeam={handleSelectBattingTeam} /> :
@@ -672,7 +530,7 @@ export default function App() {
               <View style={modalStyles.qrWrapper}>
                 <View style={modalStyles.liveBadge}><Text style={modalStyles.liveBadgeText}>• LIVE</Text></View>
                 <View style={{ padding: 20, backgroundColor: '#FFF', borderRadius: 16, elevation: 4 }}>
-                  {matchSession?.sessionCode ? <QRCode value={getViewerUrl(matchSession.sessionCode)} size={140} /> : <ActivityIndicator />}
+                  {matchSession?.sessionCode ? <QRCode value={`https://viewer-51105.web.app/match/${matchSession.sessionCode}`} size={140} /> : <ActivityIndicator />}
                 </View>
               </View>
               <Text style={modalStyles.codeLabel}>UNIQUE SESSION CODE</Text>
@@ -680,11 +538,7 @@ export default function App() {
                 <Text style={modalStyles.codeText}>{matchSession?.sessionCode?.match(/.{1,3}/g)?.join('  ') || '...'}</Text>
                 <Copy color="#0047FF" size={20} />
               </View>
-              <TouchableOpacity style={modalStyles.primaryBtn} onPress={() => {
-                const url = getViewerUrl(matchSession?.sessionCode || '');
-                if (typeof Clipboard !== 'undefined') Clipboard.setString(url);
-                Alert.alert('Link Copied!', `Share this link:\n${url}`);
-              }}>
+              <TouchableOpacity style={modalStyles.primaryBtn} onPress={() => {}}>
                 <Share2 color="#FFF" size={16} />
                 <Text style={modalStyles.primaryBtnText}>Share Link</Text>
               </TouchableOpacity>
@@ -706,36 +560,17 @@ export default function App() {
 // STYLES
 const appStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F6F9' },
-  topBarContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  topBarContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#F4F6F9' },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoText: { fontSize: 18, fontWeight: '900', color: '#0047FF', letterSpacing: 1 },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFF', fontWeight: 'bold' },
-  bottomTabBar: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 72, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 8 },
-  tabItem: { alignItems: 'center', justifyContent: 'center', flex: 1, paddingVertical: 4 },
-  tabIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  tabIconWrapActive: { backgroundColor: '#0047FF' },
-  tabText: { fontSize: 11, color: '#9CA3AF', marginTop: 2, fontWeight: '600' },
-  tabTextActive: { color: '#0047FF', fontWeight: '700' },
-});
-
-const authStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F6F9' },
-  header: { paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 32 },
-  heroBox: { alignItems: 'center', marginBottom: 32 },
-  heroIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  heroTitle: { fontSize: 28, fontWeight: '900', color: '#111827', marginBottom: 8, textAlign: 'center' },
-  heroSub: { fontSize: 14, color: '#6B7280', textAlign: 'center' },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3, marginBottom: 24 },
-  fieldLabel: { fontSize: 11, fontWeight: '800', color: '#6B7280', letterSpacing: 1, marginBottom: 8 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 14, height: 52, gap: 10 },
-  input: { flex: 1, fontSize: 15, color: '#111827', fontWeight: '500' },
-  primaryBtn: { backgroundColor: '#0047FF', borderRadius: 12, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
-  primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
-  switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  switchText: { fontSize: 14, color: '#6B7280' },
-  switchLink: { fontSize: 14, color: '#0047FF', fontWeight: '700' },
+  bottomTabBar: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, backgroundColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 20 },
+  tabItem: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+  tabIconContainer: { padding: 12, borderRadius: 24 },
+  tabIconActive: { backgroundColor: '#0047FF' },
+  tabText: { fontSize: 12, color: '#6B7280', marginTop: 4, fontWeight: '600' },
+  tabTextActive: { color: '#0047FF' },
 });
 
 const homeStyles = StyleSheet.create({
@@ -758,7 +593,7 @@ const homeStyles = StyleSheet.create({
   joinInput: { flex: 1, fontSize: 18, fontWeight: '800', color: '#111827', letterSpacing: 2 },
   recentHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   recentTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
-  recentLink: { fontSize: 12, fontWeight: '700', color: '#0047FF', paddingVertical: 4 },
+  recentLink: { fontSize: 12, fontWeight: '700', color: '#0047FF' },
   recentList: { marginBottom: 24 },
   historyCard: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, width: 260, marginRight: 16, borderWidth: 1, borderColor: '#E5E7EB' },
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },

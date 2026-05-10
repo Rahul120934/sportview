@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { firestoreDb, auth } from './firebaseConfig';
 import { computeInningsState, createDeliveryEvent } from './cricketScoring';
+import { Edit2 } from 'lucide-react-native';
 
 const scoringButtons = [
   { label: '0', type: 'run', value: 0 },
@@ -45,6 +46,8 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
   const [matchData, setMatchData] = useState(null);
   const [firstInningsDeliveries, setFirstInningsDeliveries] = useState([]);
   const [secondInningsDeliveries, setSecondInningsDeliveries] = useState([]);
+  const [superOver1Deliveries, setSuperOver1Deliveries] = useState([]);
+  const [superOver2Deliveries, setSuperOver2Deliveries] = useState([]);
   const [activeInnings, setActiveInnings] = useState(1);
   const [editingDeliveryId, setEditingDeliveryId] = useState(null);
   const [showCustomScoreModal, setShowCustomScoreModal] = useState(false);
@@ -95,7 +98,8 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
           ...data,
           teams: hydratedTeams,
         });
-        setActiveInnings(data?.innings?.currentInnings === 2 ? 2 : 1);
+        const ci = data?.innings?.currentInnings;
+        setActiveInnings(ci && [1,2,3,4].includes(ci) ? ci : 1);
         setIsHydrated(true);
       },
       (error) => {
@@ -132,10 +136,10 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
               (a.createdAt || 0) - (b.createdAt || 0)
           );
 
-        setFirstInningsDeliveries(
-          deliveries.filter((delivery) => !delivery.innings || delivery.innings === 1)
-        );
-        setSecondInningsDeliveries(deliveries.filter((delivery) => delivery.innings === 2));
+        setFirstInningsDeliveries(deliveries.filter((d) => !d.innings || d.innings === 1));
+        setSecondInningsDeliveries(deliveries.filter((d) => d.innings === 2));
+        setSuperOver1Deliveries(deliveries.filter((d) => d.innings === 3));
+        setSuperOver2Deliveries(deliveries.filter((d) => d.innings === 4));
         setDeliveriesHydrated(true);
       },
       (error) => {
@@ -192,28 +196,80 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
     () => computeInningsState(secondInningsSession, secondInningsDeliveries),
     [secondInningsSession, secondInningsDeliveries]
   );
-  const innings = activeInnings === 1 ? firstInnings : secondInnings;
+  // Super Over sessions: innings 3 = team1 bats first again, innings 4 = team2 bats
+  const superOver1Session = useMemo(() => ({
+    battingTeam: teams[firstInningsBattingKey] || defaultTeam('Team 1'),
+    bowlingTeam: teams[firstInningsBowlingKey] || defaultTeam('Team 2'),
+  }), [teams, firstInningsBattingKey, firstInningsBowlingKey]);
+  const superOver2Session = useMemo(() => ({
+    battingTeam: teams[firstInningsBowlingKey] || defaultTeam('Team 2'),
+    bowlingTeam: teams[firstInningsBattingKey] || defaultTeam('Team 1'),
+  }), [teams, firstInningsBattingKey, firstInningsBowlingKey]);
 
-  const currentSession = activeInnings === 1 ? firstInningsSession : secondInningsSession;
-  const currentDeliveries = activeInnings === 1 ? firstInningsDeliveries : secondInningsDeliveries;
+  const superOver1 = useMemo(() => computeInningsState(superOver1Session, superOver1Deliveries), [superOver1Session, superOver1Deliveries]);
+  const superOver2 = useMemo(() => computeInningsState(superOver2Session, superOver2Deliveries), [superOver2Session, superOver2Deliveries]);
+
+  const isSuperOver = activeInnings === 3 || activeInnings === 4;
+  const SUPER_OVER_BALLS = 6; // 1 over
+
+  const innings = activeInnings === 1 ? firstInnings
+    : activeInnings === 2 ? secondInnings
+    : activeInnings === 3 ? superOver1
+    : superOver2;
+
+  const currentSession = activeInnings === 1 ? firstInningsSession
+    : activeInnings === 2 ? secondInningsSession
+    : activeInnings === 3 ? superOver1Session
+    : superOver2Session;
+
+  const currentDeliveries = activeInnings === 1 ? firstInningsDeliveries
+    : activeInnings === 2 ? secondInningsDeliveries
+    : activeInnings === 3 ? superOver1Deliveries
+    : superOver2Deliveries;
+
   const maxWickets = (currentSession?.battingTeam?.players || []).length > 0
     ? (currentSession.battingTeam.players.length - 1)
     : 10;
-  
-  const inningsClosedByBalls = innings.score.legalBalls >= maxBalls;
+
+  // Normal innings limits
+  const inningsClosedByBalls = isSuperOver
+    ? innings.score.legalBalls >= SUPER_OVER_BALLS
+    : innings.score.legalBalls >= maxBalls;
   const inningsClosedByWickets = innings.score.wickets >= maxWickets;
-  
+
   const targetRuns = firstInnings.score.runs + 1;
   const secondInningsWon = activeInnings === 2 && secondInnings.score.runs >= targetRuns;
-  const inningsClosed = inningsClosedByBalls || inningsClosedByWickets || secondInningsWon;
-  const ballsRemaining = Math.max(maxBalls - innings.score.legalBalls, 0);
-  const runsRequired =
-    activeInnings === 2 ? Math.max(targetRuns - secondInnings.score.runs, 0) : null;
-  const isMatchCompleted = activeInnings === 2 && (secondInningsWon || inningsClosedByBalls || inningsClosedByWickets);
+  const isTie = activeInnings === 2
+    && (inningsClosedByBalls || inningsClosedByWickets)
+    && secondInnings.score.runs === firstInnings.score.runs;
+
+  // Super Over win condition
+  const superOverTarget = superOver1.score.runs + 1;
+  const superOver2Won = activeInnings === 4 && superOver2.score.runs >= superOverTarget;
+  const superOverClosed = activeInnings === 4 && (superOver2Won || superOver2.score.legalBalls >= SUPER_OVER_BALLS || inningsClosedByWickets);
+
+  const inningsClosed = inningsClosedByBalls || inningsClosedByWickets || secondInningsWon || superOver2Won;
+
+  const ballsRemaining = isSuperOver
+    ? Math.max(SUPER_OVER_BALLS - innings.score.legalBalls, 0)
+    : Math.max(maxBalls - innings.score.legalBalls, 0);
+  const runsRequired = activeInnings === 2
+    ? Math.max(targetRuns - secondInnings.score.runs, 0)
+    : activeInnings === 4
+    ? Math.max(superOverTarget - superOver2.score.runs, 0)
+    : null;
+
+  const isMatchCompleted = (activeInnings === 2 && !isTie && (secondInningsWon || inningsClosedByBalls || inningsClosedByWickets))
+    || superOverClosed;
+
   const winnerName = isMatchCompleted
-    ? secondInnings.score.runs >= targetRuns
-      ? secondInningsSession.battingTeam.name
-      : firstInningsSession.battingTeam.name
+    ? isSuperOver
+      ? superOver2.score.runs >= superOverTarget
+        ? superOver2Session.battingTeam.name
+        : superOver1Session.battingTeam.name
+      : secondInnings.score.runs >= targetRuns
+        ? secondInningsSession.battingTeam.name
+        : firstInningsSession.battingTeam.name
     : null;
   const createdBy = matchData?.meta?.createdBy || matchSession?.createdBy || null;
   const createdAt = matchData?.meta?.createdAt || matchSession?.createdAt || Date.now();
@@ -288,17 +344,21 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
       sessionCode,
     };
 
-    const summaryKey = JSON.stringify({
+    const driveKey = JSON.stringify({
+      activeInnings,
+      d1: firstInningsDeliveries.map((d) => `${d.id}-${d.updatedAt}`),
+      d2: secondInningsDeliveries.map((d) => `${d.id}-${d.updatedAt}`),
       config,
-      teams: payload.teams,
-      innings: payload.innings,
-      timeline: payload.timeline,
-      stats: payload.stats,
-      matchState: payload.matchState,
+      teams: {
+        t1Name: teams.team1.name,
+        t1P: teams.team1.players,
+        t2Name: teams.team2.name,
+        t2P: teams.team2.players,
+      },
     });
 
-    if (summaryWriteKeyRef.current === summaryKey) return;
-    summaryWriteKeyRef.current = summaryKey;
+    if (summaryWriteKeyRef.current === driveKey) return;
+    summaryWriteKeyRef.current = driveKey;
 
     setDoc(doc(firestoreDb, 'matches', matchId), payload, { merge: true }).catch((error) => {
       summaryWriteKeyRef.current = null;
@@ -364,7 +424,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
     // Add wicket type if passed in value (for custom wicket types)
     if (type === 'wicket' && typeof value === 'string') {
       delivery.wicketType = value;
-      delivery.label = `W-${value.substring(0,2)}`;
+      delivery.label = 'W';
     }
 
     const deliveryWithMeta = {
@@ -460,143 +520,179 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
     setActiveInnings(2);
   };
 
+  const startSuperOver = () => {
+    if (!isTie) return;
+    setActiveInnings(3);
+  };
+
+  const startSuperOver2 = () => {
+    if (activeInnings !== 3 || !inningsClosed) return;
+    setActiveInnings(4);
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.topBar}>CRICKET · LIVE SCORING</Text>
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* Score Header */}
         <View style={styles.scoreCard}>
-          <Text style={styles.matchTitle}>
-            {currentSession.battingTeam.name} vs {currentSession.bowlingTeam.name}
-          </Text>
-          {sessionCode ? (
-            <View style={{ alignItems: 'center', marginBottom: 12 }}>
-              <Text style={styles.sessionCode}>Session Code: {sessionCode}</Text>
-              <View style={{ marginTop: 4, padding: 8, backgroundColor: '#fff', borderRadius: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}>
-                <QRCode
-                  value={`https://sportviewviewer.web.app/match/${sessionCode}`}
-                  size={100}
-                />
-                <Text style={{ textAlign: 'center', fontSize: 10, marginTop: 4, color: '#6B7280' }}>Scan to View Web</Text>
-              </View>
+          <View style={styles.scoreHeaderRow}>
+            <View style={styles.liveBadgeRow}>
+              <View style={[styles.liveDot, isSuperOver && { backgroundColor: '#F59E0B' }]} />
+              <Text style={[styles.liveMatchText, isSuperOver && { color: '#F59E0B' }]}>
+                {isSuperOver ? '⚡ SUPER OVER' : isMatchCompleted ? 'MATCH COMPLETED' : 'LIVE MATCH'}
+              </Text>
             </View>
-          ) : null}
-          <Text style={styles.metaText}>Innings {activeInnings}</Text>
-          <Text style={styles.scoreText}>
-            {innings.score.runs}/{innings.score.wickets}
-          </Text>
-          <Text style={styles.metaText}>Overs: {innings.score.overs} / {config?.overs || 20}</Text>
-          <Text style={styles.metaText}>Run Rate: {innings.score.runRate}</Text>
-          {activeInnings === 2 ? (
-            <>
-              <Text style={styles.targetText}>🎯 Target: {targetRuns}</Text>
-              <Text style={styles.metaText}>Runs Required: {runsRequired}</Text>
-              <Text style={styles.metaText}>Balls Remaining: {ballsRemaining}</Text>
-            </>
-          ) : null}
-          {inningsClosed ? (
-            <Text style={styles.closedText}>
-              {activeInnings === 1 ? '✓ 1st innings complete' : '✓ 2nd innings complete'}
+            <Text style={styles.inningsText}>
+              {isSuperOver ? `SO Innings ${activeInnings - 2}` : `Innings ${activeInnings}`}
             </Text>
-          ) : null}
-          {winnerName ? <Text style={styles.winnerText}>🏆 Winner: {winnerName}</Text> : null}
+          </View>
+          <Text style={styles.teamsTitle}>{currentSession.battingTeam.name.toUpperCase()} VS {currentSession.bowlingTeam.name.toUpperCase()}</Text>
+          <View style={styles.mainScoreRow}>
+            <Text style={styles.mainScoreText}>{innings.score.runs}/{innings.score.wickets}</Text>
+            <Text style={styles.mainOversText}>({innings.score.overs})</Text>
+          </View>
+          <View style={styles.statsRow}>
+            <Text style={styles.crrLabel}>CRR <Text style={styles.crrValue}>{innings.score.runRate}</Text></Text>
+            {!isSuperOver && <Text style={styles.projScoreText}>Proj. <Text style={styles.projScoreValue}>{Math.round((innings.score.runRate || 0) * (config?.overs || 20))}</Text></Text>}
+          </View>
+          {(activeInnings === 2 || activeInnings === 4) && runsRequired !== null && (
+            <Text style={styles.crrLabel}>
+              Target <Text style={styles.crrValue}>{activeInnings === 4 ? superOverTarget : targetRuns}</Text>  |  Need {runsRequired} in {ballsRemaining} ball{ballsRemaining !== 1 ? 's' : ''}
+            </Text>
+          )}
+          {isTie && activeInnings === 2 && (
+            <View style={styles.tieBanner}>
+              <Text style={styles.tieBannerText}>🏏 MATCH TIED — Super Over Required!</Text>
+            </View>
+          )}
+          {isMatchCompleted && winnerName && (
+            <View style={[styles.tieBanner, { backgroundColor: '#D1FAE5' }]}>
+              <Text style={[styles.tieBannerText, { color: '#065F46' }]}>🏆 {winnerName} wins{isSuperOver ? ' the Super Over!' : '!'}</Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.infoRow}>
-          <View style={styles.infoBlock}>
-            <Text style={styles.infoLabel}>Batsmen</Text>
-            <Text style={styles.playerChipText}>{currentStriker?.name || '—'} *</Text>
-            <Text style={styles.playerChipText}>{currentNonStriker?.name || '—'}</Text>
-          </View>
-          <View style={styles.infoBlock}>
-            <Text style={styles.infoLabel}>Bowler</Text>
-            <Text style={styles.infoValue}>{currentBowler?.name || '—'}</Text>
-            <Text style={styles.infoSubValue}>
-              {currentBowler?.overs || '0.0'} · {currentBowler?.runs || 0}/{currentBowler?.wickets || 0}
-            </Text>
-          </View>
+        {/* Current Players */}
+        <Text style={styles.sectionHeader}>CURRENT BATTER</Text>
+        <View style={styles.playerCard}>
+          <Text style={styles.playerName}>{currentStriker?.name || '—'}*</Text>
+          <Text style={styles.playerScore}>{currentStriker?.runs || 0} <Text style={styles.playerBalls}>({currentStriker?.balls || 0})</Text></Text>
+        </View>
+        <Text style={styles.sectionHeader}>CURRENT BOWLER</Text>
+        <View style={styles.playerCard}>
+          <Text style={styles.playerName}>{currentBowler?.name || '—'}</Text>
+          <Text style={styles.bowlerScore}>{currentBowler?.wickets || 0}/{currentBowler?.runs || 0} <Text style={styles.playerBalls}>({currentBowler?.overs || '0.0'})</Text></Text>
         </View>
 
-        <View style={styles.infoRow}>
-          <View style={styles.infoBlock}>
-            <Text style={styles.infoLabel}>Extras</Text>
-            <Text style={styles.infoValue}>{innings.extras.total}</Text>
-            <Text style={styles.infoSubValue}>
-              Wd {innings.extras.wide} · Nb {innings.extras.noBall} · B {innings.extras.bye} · Lb{' '}
-              {innings.extras.legBye}
-            </Text>
-          </View>
-          <View style={styles.infoBlock}>
-            <Text style={styles.infoLabel}>Partnership</Text>
-            <Text style={styles.infoValue}>
-              {innings.partnership.runs} ({innings.partnership.balls})
-            </Text>
-          </View>
-        </View>
-
+        {/* Record Action */}
+        <Text style={styles.sectionHeader}>RECORD ACTION</Text>
         <View style={styles.buttonGrid}>
-          {scoringButtons.map((button) => (
-            <TouchableOpacity
-              key={button.label}
-              style={[styles.scoreButton, inningsClosed && styles.disabledButton]}
-              onPress={() => recordDelivery(button.type, button.value || 0)}
-              disabled={inningsClosed}
-            >
-              <Text style={styles.scoreButtonText}>{button.label}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[styles.scoreButton, styles.customButton, inningsClosed && styles.disabledButton]}
-            onPress={() => setShowCustomScoreModal(true)}
-            disabled={inningsClosed}
-          >
-            <Text style={styles.scoreButtonText}>Custom</Text>
-          </TouchableOpacity>
+          {scoringButtons.map((button) => {
+            let btnStyle = styles.btnGray;
+            let textStyle = styles.btnTextDark;
+            if (button.label === '4' || button.label === '6') {
+              btnStyle = styles.btnBlue;
+              textStyle = styles.btnTextLight;
+            } else if (button.label === 'W') {
+              btnStyle = styles.btnRed;
+              textStyle = styles.btnTextLight;
+            } else if (button.label === 'WIDE' || button.label === 'NO BALL') {
+              btnStyle = styles.btnLightBlue;
+              textStyle = styles.btnTextDarkSmall;
+            }
+
+            return (
+              <TouchableOpacity
+                key={button.label}
+                style={[styles.scoreButton, btnStyle, inningsClosed && { opacity: 0.5 }]}
+                onPress={() => recordDelivery(button.type, button.value || 0)}
+                disabled={inningsClosed}
+              >
+                <Text style={textStyle}>{button.label === 'NO BALL' ? 'NO\nBALL' : button.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
+        {/* Actions */}
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.secondaryButton, currentDeliveries.length === 0 && styles.disabledButton]}
-            onPress={undoLastBall}
-            disabled={currentDeliveries.length === 0}
-          >
-            <Text style={styles.secondaryButtonText}>← Undo</Text>
+          <TouchableOpacity style={[styles.secondaryButton, currentDeliveries.length === 0 && { opacity: 0.5 }]} onPress={undoLastBall} disabled={currentDeliveries.length === 0}>
+            <Text style={styles.secondaryButtonText}>Undo Last</Text>
           </TouchableOpacity>
           {activeInnings === 1 && inningsClosed ? (
             <TouchableOpacity style={styles.secondaryButton} onPress={startSecondInnings}>
-              <Text style={styles.secondaryButtonText}>→ 2nd Innings</Text>
+              <Text style={styles.secondaryButtonText}>Start 2nd Innings</Text>
+            </TouchableOpacity>
+          ) : isTie && activeInnings === 2 ? (
+            <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }]} onPress={startSuperOver}>
+              <Text style={[styles.secondaryButtonText, { color: '#92400E' }]}>⚡ Start Super Over</Text>
+            </TouchableOpacity>
+          ) : activeInnings === 3 && inningsClosed ? (
+            <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }]} onPress={startSuperOver2}>
+              <Text style={[styles.secondaryButtonText, { color: '#92400E' }]}>⚡ SO: {superOver2Session.battingTeam.name} bats</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
-              <Text style={styles.secondaryButtonText}>← Back</Text>
+              <Text style={styles.secondaryButtonText}>Back</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        <Text style={styles.sectionTitle}>Ball Timeline (tap to edit)</Text>
+        {/* Timeline */}
+        <View style={styles.timelineHeaderRow}>
+          <Text style={styles.sectionHeader}>BALL-BY-BALL TIMELINE</Text>
+          <TouchableOpacity style={styles.modifyLink} onPress={() => {}}>
+            <Edit2 color="#0047FF" size={12} />
+            <Text style={styles.modifyText}>Modify Current Over</Text>
+          </TouchableOpacity>
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timelineRow}>
-          {innings.timeline.map((ball) => (
-            <TouchableOpacity
-              key={ball.id}
-              style={[styles.timelineBall, ball.isWicket && styles.wicketBall]}
-              onPress={() => setEditingDeliveryId(ball.id)}
-            >
-              <Text style={styles.timelineBallText}>{ball.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {innings.timeline.slice(-6).map((ball) => {
+            const isFourOrSix = ball.runs === 4 || ball.runs === 6;
+            return (
+              <TouchableOpacity key={ball.id} style={styles.timelineItem} onPress={() => setEditingDeliveryId(ball.id)}>
+                <Text style={styles.timelineItemOver}>{ball.over}</Text>
+                <View style={[styles.timelineBall, ball.isWicket && styles.wicketBall, isFourOrSix && styles.boundaryBall]}>
+                  <Text style={styles.timelineBallText}>{ball.label}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
+
+        {/* Partnership */}
+        <Text style={styles.sectionHeader}>PARTNERSHIP</Text>
+        <View style={styles.partnershipCard}>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderText, { flex: 2 }]}>BATTER</Text>
+            <Text style={styles.tableHeaderText}>RUNS</Text>
+            <Text style={styles.tableHeaderText}>BALLS</Text>
+            <Text style={styles.tableHeaderText}>4S</Text>
+            <Text style={styles.tableHeaderText}>6S</Text>
+          </View>
+          {innings.currentBatsmen.map((batsman, idx) => (
+            <View key={idx} style={styles.tableRow}>
+              <Text style={[styles.tableCellText, { flex: 2, fontWeight: '700', color: '#111827' }]}>{batsman?.name}{idx === 0 ? '*' : ''}</Text>
+              <Text style={styles.tableCellText}>{batsman?.runs || 0}</Text>
+              <Text style={styles.tableCellText}>{batsman?.balls || 0}</Text>
+              <Text style={styles.tableCellText}>{batsman?.fours || 0}</Text>
+              <Text style={styles.tableCellText}>{batsman?.sixes || 0}</Text>
+            </View>
+          ))}
+        </View>
+        
+        <View style={{height: 40}} />
       </ScrollView>
 
+      {/* Modals... */}
       <Modal transparent visible={!!editingDeliveryId} animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit Delivery</Text>
             <ScrollView style={styles.modalList}>
               {scoringButtons.map((button) => (
-                <TouchableOpacity
-                  key={`edit-${button.label}`}
-                  style={styles.modalOption}
-                  onPress={() => applyEditToDelivery(button.type, button.value || 0)}
-                >
+                <TouchableOpacity key={`edit-${button.label}`} style={styles.modalOption} onPress={() => applyEditToDelivery(button.type, button.value || 0)}>
                   <Text style={styles.modalOptionText}>{button.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -615,26 +711,9 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add Custom Runs</Text>
-            <TextInput
-              style={styles.customInput}
-              placeholder="Enter runs (e.g. 5)"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="numeric"
-              value={customScoreValue}
-              onChangeText={setCustomScoreValue}
-            />
-            <TouchableOpacity style={styles.modalConfirm} onPress={addCustomRuns}>
-              <Text style={styles.modalConfirmText}>Add</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => {
-                setShowCustomScoreModal(false);
-                setCustomScoreValue('');
-              }}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
+            <TextInput style={styles.customInput} placeholder="Enter runs (e.g. 5)" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={customScoreValue} onChangeText={setCustomScoreValue} />
+            <TouchableOpacity style={styles.modalConfirm} onPress={addCustomRuns}><Text style={styles.modalConfirmText}>Add</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancel} onPress={() => { setShowCustomScoreModal(false); setCustomScoreValue(''); }}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -645,24 +724,12 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
             <Text style={styles.modalTitle}>Select Wicket Type</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 10 }}>
               {['Bowled', 'Caught', 'LBW', 'Run Out', 'Stumped', 'Hit Wicket'].map((wType) => (
-                <TouchableOpacity
-                  key={wType}
-                  style={[styles.scoreButton, { width: '48%', marginBottom: 10, paddingVertical: 12 }]}
-                  onPress={() => {
-                    recordDelivery('wicket', wType);
-                    setShowWicketModal(false);
-                  }}
-                >
-                  <Text style={styles.scoreButtonText}>{wType}</Text>
+                <TouchableOpacity key={wType} style={[styles.scoreButton, styles.btnGray, { width: '48%', marginBottom: 10, paddingVertical: 12 }]} onPress={() => { recordDelivery('wicket', wType); setShowWicketModal(false); }}>
+                  <Text style={styles.btnTextDark}>{wType}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity
-              style={[styles.modalCancel, { marginTop: 10 }]}
-              onPress={() => setShowWicketModal(false)}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancel} onPress={() => setShowWicketModal(false)}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -671,302 +738,69 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    padding: 12,
-    paddingTop: 18,
-  },
-  scrollContent: {
-    flex: 1,
-  },
-  topBar: {
-    color: '#6B7280',
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  scoreCard: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    alignItems: 'center',
-  },
-  matchTitle: {
-    color: '#4B5563',
-    fontSize: 14,
-    marginBottom: 6,
-    fontWeight: '600',
-  },
-  sessionCode: {
-    color: '#D97706',
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  scoreText: {
-    color: '#1D4ED8',
-    fontSize: 42,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  metaText: {
-    color: '#6B7280',
-    fontSize: 13,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  targetText: {
-    color: '#D97706',
-    fontSize: 14,
-    marginTop: 6,
-    fontWeight: '700',
-  },
-  closedText: {
-    color: '#10B981',
-    marginTop: 8,
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  winnerText: {
-    color: '#2563EB',
-    marginTop: 8,
-    fontWeight: '800',
-    fontSize: 16,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
-  },
-  infoBlock: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  infoLabel: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginBottom: 6,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  infoSubValue: {
-    color: '#6B7280',
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  playerChipText: {
-    color: '#1F2937',
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  buttonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginVertical: 12,
-  },
-  scoreButton: {
-    width: '18%',
-    minWidth: 58,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  scoreButtonText: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  customButton: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  secondaryButtonText: {
-    color: '#4B5563',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  disabledButton: {
-    opacity: 0.4,
-  },
-  sectionTitle: {
-    color: '#4B5563',
-    fontSize: 12,
-    marginTop: 8,
-    marginBottom: 8,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  timelineRow: {
-    marginBottom: 16,
-    maxHeight: 44,
-  },
-  timelineBall: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 18,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  wicketBall: {
-    borderColor: '#EF4444',
-    backgroundColor: '#FEF2F2',
-  },
-  timelineBallText: {
-    color: '#111827',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  modalTitle: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  modalList: {
-    maxHeight: 340,
-  },
-  modalOption: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalOptionText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  modalDelete: {
-    marginTop: 12,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalDeleteText: {
-    color: '#EF4444',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  modalCancel: {
-    marginTop: 12,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    color: '#4B5563',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  customInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    color: '#111827',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginVertical: 16,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modalConfirm: {
-    backgroundColor: '#2563EB',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalConfirmText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  container: { flex: 1, backgroundColor: '#F4F6F9', padding: 16, paddingTop: 20 },
+  scrollContent: { flex: 1 },
+  scoreCard: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#E5E7EB' },
+  scoreHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  liveBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#DC2626' },
+  liveMatchText: { fontSize: 11, fontWeight: '800', color: '#DC2626', letterSpacing: 0.5 },
+  inningsText: { fontSize: 11, fontWeight: '600', color: '#4B5563' },
+  teamsTitle: { fontSize: 12, fontWeight: '800', color: '#111827', marginBottom: 4 },
+  mainScoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 12 },
+  mainScoreText: { fontSize: 48, fontWeight: '900', color: '#0047FF', letterSpacing: -1 },
+  mainOversText: { fontSize: 20, fontWeight: '800', color: '#4B5563' },
+  statsRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 16 },
+  crrLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  crrValue: { color: '#10B981', fontWeight: '800', fontSize: 16 },
+  projScoreText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  projScoreValue: { color: '#111827', fontWeight: '800', fontSize: 16 },
+  sectionHeader: { fontSize: 12, fontWeight: '800', color: '#4B5563', letterSpacing: 0.5, marginBottom: 8, marginTop: 12 },
+  playerCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  playerName: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  playerScore: { fontSize: 18, fontWeight: '900', color: '#0047FF' },
+  bowlerScore: { fontSize: 18, fontWeight: '900', color: '#10B981' },
+  playerBalls: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
+  buttonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  scoreButton: { width: '30%', height: 60, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  btnGray: { backgroundColor: '#E5E7EB' },
+  btnBlue: { backgroundColor: '#0047FF' },
+  btnRed: { backgroundColor: '#DC2626' },
+  btnLightBlue: { backgroundColor: '#DBEAFE' },
+  btnTextDark: { fontSize: 24, fontWeight: '900', color: '#111827' },
+  btnTextLight: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
+  btnTextDarkSmall: { fontSize: 14, fontWeight: '800', color: '#6B7280', textAlign: 'center' },
+  actionRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  secondaryButton: { flex: 1, backgroundColor: '#E5E7EB', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  secondaryButtonText: { color: '#111827', fontSize: 14, fontWeight: '700' },
+  timelineHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modifyLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  modifyText: { fontSize: 11, fontWeight: '700', color: '#0047FF' },
+  timelineRow: { marginBottom: 24 },
+  timelineItem: { alignItems: 'center', marginRight: 12 },
+  timelineItemOver: { fontSize: 10, color: '#6B7280', fontWeight: '600', marginBottom: 4 },
+  timelineBall: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  wicketBall: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#DC2626' },
+  boundaryBall: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#0047FF' },
+  timelineBallText: { fontSize: 16, fontWeight: '900', color: '#111827' },
+  partnershipCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 24 },
+  tableHeader: { flexDirection: 'row', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 8 },
+  tableHeaderText: { flex: 1, fontSize: 10, fontWeight: '800', color: '#6B7280' },
+  tableRow: { flexDirection: 'row', marginBottom: 8 },
+  tableCellText: { flex: 1, fontSize: 14, color: '#4B5563', fontWeight: '500' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(17, 24, 39, 0.7)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 16 },
+  modalList: { maxHeight: 300, marginBottom: 16 },
+  modalOption: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  modalOptionText: { fontSize: 16, color: '#111827', fontWeight: '600' },
+  modalDelete: { paddingVertical: 16, marginTop: 8 },
+  modalDeleteText: { fontSize: 16, color: '#DC2626', fontWeight: '700' },
+  modalCancel: { paddingVertical: 16, alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12 },
+  modalCancelText: { fontSize: 16, color: '#111827', fontWeight: '700' },
+  customInput: { backgroundColor: '#F3F4F6', borderRadius: 8, padding: 16, fontSize: 16, marginBottom: 16 },
+  modalConfirm: { backgroundColor: '#0047FF', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+  modalConfirmText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  tieBanner: { marginTop: 12, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
+  tieBannerText: { fontSize: 14, fontWeight: '800', color: '#92400E', textAlign: 'center' },
 });

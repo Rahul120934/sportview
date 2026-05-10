@@ -7,62 +7,52 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  Image,
 } from 'react-native';
+import { UserPlus, CheckCircle2, GripVertical, MinusCircle, Search, Activity, Home, ScanLine, History as HistoryIcon, Target } from 'lucide-react-native';
+
+const RosterPlayers = [
+  { id: 'r1', name: 'Rohit Sharma', role: 'Top Order Batter', type: 'RHB', initials: 'RS', isCaptain: true },
+  { id: 'r2', name: 'Jasprit Bumrah', role: 'Bowler', type: 'RHB • Right-arm Fast', initials: 'JB' },
+  { id: 'r3', name: 'Virat Kohli', role: 'Top Order Batter', type: 'RHB', initials: 'VK' },
+  { id: 'r4', name: 'MS Dhoni', role: 'Wicket Keeper', type: 'RHB', initials: 'MS', isWk: true },
+  { id: 'r5', name: 'Ravindra Jadeja', role: 'All-rounder', type: 'LHB • Left-arm Spin', initials: 'RJ' },
+];
 
 export default function TeamPlayerSetupScreen({ config, onBack, onComplete }) {
   const [activeTeam, setActiveTeam] = useState('team1');
-  const [team1Name, setTeam1Name] = useState(config.team1 || 'Team 1');
-  const [team2Name, setTeam2Name] = useState(config.team2 || 'Team 2');
-  const [team1Players, setTeam1Players] = useState([]);
-  const [team2Players, setTeam2Players] = useState([]);
-  const [newPlayerName, setNewPlayerName] = useState('');
+  const [team1Name, setTeam1Name] = useState(config?.team1 || 'Team 1');
+  const [team2Name, setTeam2Name] = useState(config?.team2 || 'Team 2');
+  
+  const [team1Players, setTeam1Players] = useState([RosterPlayers[2], RosterPlayers[3], RosterPlayers[4]]);
+  const [team2Players, setTeam2Players] = useState([RosterPlayers[0], RosterPlayers[1]]);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRosterPlayer, setSelectedRosterPlayer] = useState(RosterPlayers[2]);
 
-  const maxPlayers = config.players || 11;
-  const isNamesMode = config.playerIdentity === 'names';
-
-  useEffect(() => {
-    if (!isNamesMode) {
-      const generate = (prefix) =>
-        Array.from({ length: maxPlayers }, (_, i) => ({
-          id: `${prefix}-${i + 1}`,
-          name: `Player ${i + 1}`,
-        }));
-      setTeam1Players(generate('t1'));
-      setTeam2Players(generate('t2'));
-    }
-  }, [isNamesMode, maxPlayers]);
+  const maxPlayers = config?.players || 11;
+  const isNamesMode = config?.playerIdentity !== 'anonymous'; // default to names in new UI
 
   const activePlayers = activeTeam === 'team1' ? team1Players : team2Players;
-  const setActivePlayers =
-    activeTeam === 'team1' ? setTeam1Players : setTeam2Players;
+  const setActivePlayers = activeTeam === 'team1' ? setTeam1Players : setTeam2Players;
 
-  const handleAddPlayer = () => {
-    const trimmed = newPlayerName.trim();
-    if (!trimmed) return;
+  const handleAddPlayer = (player) => {
     if (activePlayers.length >= maxPlayers) {
       Alert.alert('Limit Reached', `You can only add up to ${maxPlayers} players.`);
       return;
     }
-    setActivePlayers((prev) => [
-      ...prev,
-      { id: `${activeTeam}-${Date.now()}`, name: trimmed },
-    ]);
-    setNewPlayerName('');
+    if (activePlayers.find(p => p.id === player.id)) return;
+    setActivePlayers(prev => [...prev, player]);
   };
 
   const handleRemovePlayer = (id) => {
-    setActivePlayers((prev) => prev.filter((p) => p.id !== id));
+    setActivePlayers(prev => prev.filter(p => p.id !== id));
   };
 
-  const handleConfirm = () => {
-    if (isNamesMode) {
-      if (team1Players.length < maxPlayers || team2Players.length < maxPlayers) {
-        Alert.alert(
-          'Incomplete Teams',
-          `Both teams must have ${maxPlayers} players each.`
-        );
-        return;
-      }
+  const handleSaveSquad = () => {
+    if (team1Players.length === 0 || team2Players.length === 0) {
+      Alert.alert('Incomplete Teams', 'Both teams must have at least 1 player.');
+      return;
     }
     onComplete({
       team1Name,
@@ -72,293 +62,215 @@ export default function TeamPlayerSetupScreen({ config, onBack, onComplete }) {
     });
   };
 
+  const availableRoster = RosterPlayers.filter(
+    p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) && !activePlayers.find(ap => ap.id === p.id)
+  );
+
   return (
     <View style={styles.container}>
-      <Text style={styles.topBar}>CRICKET · SQUAD SETUP</Text>
-
-      {/* Team Name Inputs */}
-      <View style={styles.field}>
-        <Text style={styles.label}>TEAM 1 NAME</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter team name"
-          placeholderTextColor="#9CA3AF"
-          value={team1Name}
-          onChangeText={setTeam1Name}
-        />
-        <View style={styles.inputUnderline} />
+      {/* Fake Top Bar */}
+      <View style={styles.topBarContainer}>
+        <View style={styles.logoRow}>
+          <Activity color="#0047FF" size={24} />
+          <Text style={styles.logoText}>STADIUM LIVE</Text>
+        </View>
+        <View style={styles.avatar}><Text style={styles.avatarText}>R</Text></View>
       </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>TEAM 2 NAME</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter team name"
-          placeholderTextColor="#9CA3AF"
-          value={team2Name}
-          onChangeText={setTeam2Name}
-        />
-        <View style={styles.inputUnderline} />
-      </View>
+      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+        <Text style={styles.mainTitle}>Team Management</Text>
+        <Text style={styles.mainSubtitle}>Configure your squad and batting order for the upcoming match.</Text>
 
-      {/* Team Toggle */}
-      <View style={styles.field}>
-        <Text style={styles.label}>SELECT TEAM</Text>
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.btnInvite}>
+            <UserPlus color="#111827" size={16} />
+            <Text style={styles.btnInviteText}>Invite Player</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.btnSave} onPress={handleSaveSquad}>
+            <CheckCircle2 color="#FFFFFF" size={16} />
+            <Text style={styles.btnSaveText}>Save Squad</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Team Toggle */}
         <View style={styles.pillToggle}>
-          <TouchableOpacity
-            style={[styles.pillOption, activeTeam === 'team1' && styles.pillActive]}
-            onPress={() => setActiveTeam('team1')}
-          >
-            <Text style={[styles.pillText, activeTeam === 'team1' && styles.pillTextActive]}>
-              TEAM 1
-            </Text>
+          <TouchableOpacity style={[styles.pillOption, activeTeam === 'team1' && styles.pillActive]} onPress={() => setActiveTeam('team1')}>
+            <TextInput style={[styles.pillText, activeTeam === 'team1' && styles.pillTextActive]} value={team1Name} onChangeText={setTeam1Name} placeholder="Team 1" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.pillOption, activeTeam === 'team2' && styles.pillActive]}
-            onPress={() => setActiveTeam('team2')}
-          >
-            <Text style={[styles.pillText, activeTeam === 'team2' && styles.pillTextActive]}>
-              TEAM 2
-            </Text>
+          <TouchableOpacity style={[styles.pillOption, activeTeam === 'team2' && styles.pillActive]} onPress={() => setActiveTeam('team2')}>
+             <TextInput style={[styles.pillText, activeTeam === 'team2' && styles.pillTextActive]} value={team2Name} onChangeText={setTeam2Name} placeholder="Team 2" />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Player Count */}
-      <Text style={styles.countText}>
-        {activeTeam === 'team1' ? team1Name : team2Name} · {activePlayers.length} / {maxPlayers}
-      </Text>
-
-      {/* Names Mode: Add Input */}
-      {isNamesMode && (
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.addInput}
-            placeholder="Player name"
-            placeholderTextColor="#9CA3AF"
-            value={newPlayerName}
-            onChangeText={setNewPlayerName}
-            onSubmitEditing={handleAddPlayer}
-          />
-          <TouchableOpacity style={styles.addButton} onPress={handleAddPlayer}>
-            <Text style={styles.addButtonText}>ADD</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Player List */}
-      <ScrollView style={styles.playerList} showsVerticalScrollIndicator={false}>
-        {activePlayers.map((player, index) => (
-          <View key={player.id} style={styles.playerRow}>
-            <View style={styles.playerNumberBadge}>
-              <Text style={styles.playerNumberText}>{index + 1}</Text>
-            </View>
-            <Text style={styles.playerName}>{player.name}</Text>
-            {isNamesMode && (
-              <TouchableOpacity onPress={() => handleRemovePlayer(player.id)}>
-                <Text style={styles.removeText}>×</Text>
-              </TouchableOpacity>
-            )}
+        {/* Playing XI Card */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Playing XI</Text>
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{activePlayers.length} / {maxPlayers} Selected</Text>
           </View>
-        ))}
-        {activePlayers.length === 0 && isNamesMode && (
-          <Text style={styles.emptyText}>No players added yet</Text>
-        )}
+        </View>
+
+        <View style={styles.xiContainer}>
+          {activePlayers.map((player, idx) => (
+            <TouchableOpacity key={player.id} style={styles.playerRow} onPress={() => setSelectedRosterPlayer(player)}>
+              <GripVertical color="#9CA3AF" size={20} />
+              <Text style={styles.playerIndex}>{idx + 1}</Text>
+              <View style={styles.playerAvatarSm}>
+                <Text style={styles.playerAvatarTextSm}>{player.initials}</Text>
+              </View>
+              <View style={styles.playerInfo}>
+                <View style={styles.playerNameRow}>
+                  <Text style={styles.playerName}>{player.name}</Text>
+                  {player.isCaptain && <Text style={styles.roleBadgeC}>(C)</Text>}
+                  {player.isWk && <Text style={styles.roleBadgeWk}>(WK)</Text>}
+                </View>
+                <Text style={styles.playerType}>{player.type}</Text>
+              </View>
+              <TouchableOpacity onPress={() => handleRemovePlayer(player.id)}>
+                <MinusCircle color="#9CA3AF" size={24} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+          
+          <TouchableOpacity style={styles.addDashedBtn}>
+            <Text style={styles.addDashedText}>+ Add Player from Roster</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Available Roster */}
+        <Text style={styles.sectionTitleSm}>Available Roster</Text>
+        <View style={styles.rosterCard}>
+          <View style={styles.searchBox}>
+            <Search color="#6B7280" size={18} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search players..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+          
+          {availableRoster.map(player => (
+             <TouchableOpacity key={player.id} style={styles.rosterRow} onPress={() => handleAddPlayer(player)}>
+               <View style={styles.rosterAvatar}>
+                 <Text style={styles.rosterAvatarText}>{player.initials}</Text>
+               </View>
+               <View style={styles.playerInfo}>
+                 <Text style={styles.playerName}>{player.name}</Text>
+                 <Text style={styles.playerType}>{player.role}</Text>
+               </View>
+             </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Selected Player Stats */}
+        <Text style={styles.sectionTitleSm}>Selected Player Stats</Text>
+        <View style={styles.statsCard}>
+          <View style={styles.statsHeader}>
+            <View style={styles.statsAvatar}>
+               <Text style={styles.statsAvatarText}>{selectedRosterPlayer.initials}</Text>
+            </View>
+            <View>
+              <Text style={styles.statsName}>{selectedRosterPlayer.name}</Text>
+              <Text style={styles.statsRole}>{selectedRosterPlayer.role}</Text>
+            </View>
+          </View>
+          <View style={styles.statsGrid}>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Matches</Text>
+              <Text style={styles.statValue}>42</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Runs</Text>
+              <Text style={styles.statValueBig}>1240</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Wickets</Text>
+              <Text style={styles.statValue}>14</Text>
+            </View>
+          </View>
+        </View>
+        
+        <View style={{height: 100}} />
       </ScrollView>
 
-      {/* Actions */}
-      <TouchableOpacity style={styles.startButton} onPress={handleConfirm}>
-        <Text style={styles.startButtonText}>CONFIRM & START MATCH →</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={onBack}>
-        <Text style={styles.backLink}>← Back to Match Setup</Text>
-      </TouchableOpacity>
+      {/* Fake Bottom Tab Bar */}
+      <View style={styles.bottomTabBar}>
+        <View style={styles.tabItem}>
+          <Target color="#0047FF" size={20} />
+          <Text style={styles.tabTextActive}>Scoring</Text>
+        </View>
+        <View style={styles.tabItem}>
+          <HistoryIcon color="#6B7280" size={20} />
+          <Text style={styles.tabText}>History</Text>
+        </View>
+        <View style={styles.tabItem}>
+          <ScanLine color="#6B7280" size={20} />
+          <Text style={styles.tabText}>Viewer</Text>
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 24,
-  },
-  topBar: {
-    color: '#6B7280',
-    fontSize: 13,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    marginBottom: 12,
-  },
-  field: {
-    marginBottom: 8,
-  },
-  label: {
-    color: '#4B5563',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  input: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: 'bold',
-    paddingVertical: 8,
-    paddingHorizontal: 0,
-  },
-  inputUnderline: {
-    height: 2,
-    backgroundColor: '#2563EB',
-    marginTop: 2,
-    borderRadius: 1,
-  },
-  pillToggle: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    overflow: 'hidden',
-    padding: 4,
-  },
-  pillOption: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  pillActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  pillText: {
-    color: '#6B7280',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  pillTextActive: {
-    color: '#2563EB',
-  },
-  countText: {
-    color: '#6B7280',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  addInput: {
-    flex: 1,
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '600',
-    paddingVertical: 10,
-    marginRight: 12,
-  },
-  addButton: {
-    backgroundColor: '#2563EB',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  playerList: {
-    flex: 1,
-    marginBottom: 16,
-  },
-  playerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  playerNumberBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  playerNumberText: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  playerName: {
-    flex: 1,
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  removeText: {
-    color: '#EF4444',
-    fontSize: 24,
-    fontWeight: '300',
-    paddingHorizontal: 4,
-  },
-  emptyText: {
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginTop: 24,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  startButton: {
-    backgroundColor: '#2563EB',
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  startButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  backLink: {
-    color: '#6B7280',
-    textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#F4F6F9' },
+  topBarContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoText: { fontSize: 18, fontWeight: '900', color: '#0047FF', letterSpacing: 1 },
+  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#FFF', fontWeight: 'bold' },
+  scrollArea: { flex: 1, paddingHorizontal: 20, paddingTop: 24 },
+  mainTitle: { fontSize: 28, fontWeight: '900', color: '#111827', marginBottom: 8 },
+  mainSubtitle: { fontSize: 14, color: '#4B5563', lineHeight: 20, marginBottom: 20 },
+  actionRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  btnInvite: { flex: 1, backgroundColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 8, gap: 8 },
+  btnInviteText: { color: '#111827', fontWeight: '700', fontSize: 14 },
+  btnSave: { flex: 1, backgroundColor: '#0047FF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 8, gap: 8 },
+  btnSaveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  pillToggle: { flexDirection: 'row', backgroundColor: '#E5E7EB', borderRadius: 8, padding: 4, marginBottom: 24 },
+  pillOption: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
+  pillActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  pillText: { fontSize: 14, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
+  pillTextActive: { color: '#0047FF', fontWeight: '800' },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
+  countBadge: { backgroundColor: '#0047FF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  countBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  xiContainer: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 24 },
+  playerRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F3F4F6', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+  playerIndex: { fontSize: 14, fontWeight: '800', color: '#0047FF', width: 24, textAlign: 'center', marginRight: 8 },
+  playerAvatarSm: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  playerAvatarTextSm: { fontSize: 14, fontWeight: '700', color: '#4B5563' },
+  playerInfo: { flex: 1 },
+  playerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  playerName: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  roleBadgeC: { fontSize: 10, fontWeight: '800', color: '#10B981' },
+  roleBadgeWk: { fontSize: 10, fontWeight: '800', color: '#10B981' },
+  playerType: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  addDashedBtn: { borderWidth: 1, borderColor: '#A78BFA', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4, backgroundColor: '#FFFFFF' },
+  addDashedText: { color: '#4C1D95', fontWeight: '700', fontSize: 14 },
+  sectionTitleSm: { fontSize: 14, fontWeight: '800', color: '#111827', marginBottom: 12 },
+  rosterCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 24 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 12, height: 40, marginBottom: 12 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#111827' },
+  rosterRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, paddingHorizontal: 4 },
+  rosterAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  rosterAvatarText: { color: '#1E3A8A', fontWeight: '700', fontSize: 14 },
+  statsCard: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 20, marginBottom: 40 },
+  statsHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  statsAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  statsAvatarText: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
+  statsName: { fontSize: 20, fontWeight: '800', color: '#111827' },
+  statsRole: { fontSize: 13, color: '#4B5563', marginTop: 4 },
+  statsGrid: { flexDirection: 'row', gap: 12 },
+  statBox: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+  statLabel: { fontSize: 11, fontWeight: '700', color: '#4B5563', marginBottom: 8 },
+  statValue: { fontSize: 28, fontWeight: '900', color: '#0047FF' },
+  statValueBig: { fontSize: 36, fontWeight: '900', color: '#0047FF', letterSpacing: -1, lineHeight: 36 },
+  bottomTabBar: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, backgroundColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 20 },
+  tabItem: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+  tabText: { fontSize: 12, color: '#6B7280', marginTop: 4, fontWeight: '600' },
+  tabTextActive: { fontSize: 12, color: '#0047FF', marginTop: 4, fontWeight: '600' },
 });
