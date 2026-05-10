@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  Clipboard,
 } from 'react-native';
 import {
   collection,
@@ -21,7 +22,7 @@ import {
 } from 'firebase/firestore';
 import { firestoreDb, auth } from './firebaseConfig';
 import { computeInningsState, createDeliveryEvent } from './cricketScoring';
-import { Edit2 } from 'lucide-react-native';
+import { Edit2, Share2, Copy } from 'lucide-react-native';
 
 const scoringButtons = [
   { label: '0', type: 'run', value: 0 },
@@ -585,6 +586,26 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
           <Text style={styles.bowlerScore}>{currentBowler?.wickets || 0}/{currentBowler?.runs || 0} <Text style={styles.playerBalls}>({currentBowler?.overs || '0.0'})</Text></Text>
         </View>
 
+        {/* Share Section */}
+        <Text style={styles.sectionHeader}>SPECTATOR LINK</Text>
+        <View style={styles.shareCard}>
+          <View style={styles.qrInlineWrapper}>
+            <QRCode value={`https://gp-hackathon-4d77f.web.app/match/${matchSession.sessionCode}`} size={60} />
+          </View>
+          <View style={styles.shareInfo}>
+            <Text style={styles.shareTitle}>Live Session Code</Text>
+            <Text style={styles.shareCode}>{matchSession.sessionCode}</Text>
+            <TouchableOpacity style={styles.shareBtnInline} onPress={() => {
+              const url = `https://gp-hackathon-4d77f.web.app/match/${matchSession.sessionCode}`;
+              if (typeof Clipboard !== 'undefined') Clipboard.setString(url);
+              Alert.alert('Link Copied!', `Share this link:\n${url}`);
+            }}>
+              <Share2 color="#0047FF" size={14} />
+              <Text style={styles.shareBtnTextInline}>Share Link</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Record Action */}
         <Text style={styles.sectionHeader}>RECORD ACTION</Text>
         <View style={styles.buttonGrid}>
@@ -803,4 +824,11 @@ const styles = StyleSheet.create({
   modalConfirmText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   tieBanner: { marginTop: 12, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
   tieBannerText: { fontSize: 14, fontWeight: '800', color: '#92400E', textAlign: 'center' },
+  shareCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', marginHorizontal: 16, borderRadius: 14, padding: 12, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
+  qrInlineWrapper: { padding: 4, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#F3F4F6' },
+  shareInfo: { flex: 1, marginLeft: 16, justifyContent: 'center' },
+  shareTitle: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  shareCode: { fontSize: 18, fontWeight: '900', color: '#111827', letterSpacing: 2, marginBottom: 8 },
+  shareBtnInline: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, alignSelf: 'flex-start', gap: 6 },
+  shareBtnTextInline: { color: '#0047FF', fontSize: 12, fontWeight: '700' }
 });
