@@ -12,13 +12,23 @@ import FootballScoreboardScreen from './FootballScoreboardScreen';
 import GenericSetupScreen from './GenericSetupScreen';
 import GenericPointScoreboardScreen from './GenericPointScoreboardScreen';
 
-// Dynamic viewer URL - works on localhost and production
+// Always use the deployed Firebase URL for QR codes so they work when scanned from any device
+const FIREBASE_URL = 'https://gp-hackathon-4d77f.web.app';
+
 const getViewerUrl = (sessionCode) => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  // If we're already on the deployed Firebase domain, use that origin
+  // Otherwise always fall back to the Firebase URL (so localhost QRs still work on phones)
+  if (
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1')
+  ) {
     return `${window.location.origin}/match/${sessionCode}`;
   }
-  return `https://gp-hackathon-4d77f.web.app/match/${sessionCode}`;
+  return `${FIREBASE_URL}/match/${sessionCode}`;
 };
+
 
 import TeamPlayerSetupScreen from './TeamPlayerSetupScreen';
 import TossScreen from './TossScreen';
@@ -224,7 +234,6 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [viewerCode, setViewerCode] = useState('');
-  const [sportModalVisible, setSportModalVisible] = useState(false);
 
   const sports = [
     { id: 'cricket', name: 'Cricket', emoji: '🏏', color: '#0047FF', desc: 'Runs, Overs, Wickets' },
@@ -296,57 +305,28 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
                 <Plus color="#0047FF" size={24} />
               </View>
               <Text style={homeStyles.newMatchTitle}>Start a New Match</Text>
-              <Text style={homeStyles.newMatchDesc}>Initialize professional-grade scoring for multiple sports with custom rules.</Text>
-              
-              <TouchableOpacity 
-                style={homeStyles.selectSportBtn} 
-                onPress={() => setSportModalVisible(true)}
-              >
-                <Activity color="#0047FF" size={18} />
-                <Text style={homeStyles.selectSportBtnText}>CHOOSE SPORT</Text>
-                <ChevronRight color="#0047FF" size={16} />
-              </TouchableOpacity>
+              <Text style={homeStyles.newMatchDesc}>Tap a sport below to begin scoring.</Text>
+
+              {/* 3-column sport grid */}
+              <View style={homeStyles.sportGrid}>
+                {sports.map(s => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[homeStyles.sportGridBtn, { borderColor: s.color }]}
+                    onPress={() => onStartNew(s.id)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[homeStyles.sportGridIcon, { backgroundColor: s.color + '18' }]}>
+                      <Text style={homeStyles.sportGridEmoji}>{s.emoji}</Text>
+                    </View>
+                    <Text style={[homeStyles.sportGridName, { color: s.color }]}>{s.name}</Text>
+                    <Text style={homeStyles.sportGridDesc}>{s.desc}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
-            {/* Sport Selection Modal */}
-            <Modal
-              visible={sportModalVisible}
-              transparent={true}
-              animationType="slide"
-              onRequestClose={() => setSportModalVisible(false)}
-            >
-              <View style={homeStyles.modalBackdrop}>
-                <View style={homeStyles.modalCard}>
-                  <View style={homeStyles.modalHeader}>
-                    <Text style={homeStyles.modalTitle}>Select Sport</Text>
-                    <TouchableOpacity onPress={() => setSportModalVisible(false)}>
-                      <Text style={homeStyles.closeBtn}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView style={homeStyles.sportList}>
-                    {sports.map(s => (
-                      <TouchableOpacity 
-                        key={s.id} 
-                        style={homeStyles.sportItem}
-                        onPress={() => {
-                          setSportModalVisible(false);
-                          onStartNew(s.id);
-                        }}
-                      >
-                        <View style={[homeStyles.sportIcon, { backgroundColor: s.color + '15' }]}>
-                          <Text style={homeStyles.sportEmoji}>{s.emoji}</Text>
-                        </View>
-                        <View style={homeStyles.sportInfo}>
-                          <Text style={homeStyles.sportName}>{s.name}</Text>
-                          <Text style={homeStyles.sportDesc}>{s.desc}</Text>
-                        </View>
-                        <ChevronRight color="#D1D5DB" size={16} />
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              </View>
-            </Modal>
+
 
 
             <View style={homeStyles.joinCard}>
@@ -467,6 +447,8 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
         )}
       </ScrollView>
       <BottomTabBar activeTab={activeTab} onTabSelect={setActiveTab} />
+
+
     </View>
   );
 }
@@ -632,6 +614,11 @@ export default function App() {
   const [showSignUp, setShowSignUp] = useState(false);
   const [user, setUser] = useState(null);
   const [screen, setScreen] = useState('home');
+  const [matchConfig, setMatchConfig] = useState(null);
+  const [teamSetupData, setTeamSetupData] = useState(null);
+  const [matchSession, setMatchSession] = useState(null);
+  const [viewerSessionCode, setViewerSessionCode] = useState('');
+  const [sessionCreatedModal, setSessionCreatedModal] = useState(false);
   const [footballSession, setFootballSession] = useState(null);
   const [genericSession, setGenericSession] = useState(null);
   const [selectedSport, setSelectedSport] = useState(null);
@@ -664,7 +651,6 @@ export default function App() {
   };
 
   const handleResumeSession = (session) => {
-    // ... same as before
     const teams = { team1: session?.teams?.team1 || fallbackTeam('Team 1'), team2: session?.teams?.team2 || fallbackTeam('Team 2') };
     const battingTeamKey = session?.innings?.first?.battingTeamKey || 'team1';
     const bowlingTeamKey = session?.innings?.first?.bowlingTeamKey || (battingTeamKey === 'team1' ? 'team2' : 'team1');
@@ -904,8 +890,26 @@ const homeStyles = StyleSheet.create({
   fhScore: { fontSize: 20, fontWeight: '900', color: '#0047FF' },
   fhOvers: { fontSize: 11, color: '#6B7280', fontWeight: '600', textAlign: 'right' },
   fhBtn: { backgroundColor: '#0047FF', borderRadius: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, marginTop: 8, gap: 8 },
-  fhBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 }
+  fhBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+
+  // Sport grid
+  sportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 },
+  sportGridBtn: {
+    width: '30%',
+    flexGrow: 1,
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    gap: 6,
+  },
+  sportGridIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  sportGridEmoji: { fontSize: 22 },
+  sportGridName: { fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  sportGridDesc: { fontSize: 10, color: '#9CA3AF', textAlign: 'center', lineHeight: 13 },
 });
+
 
 const setupStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F6F9', paddingHorizontal: 20, paddingTop: 20 },
@@ -952,8 +956,44 @@ const setupStyles = StyleSheet.create({
   sportBtnLabel: { fontSize: 14, fontWeight: '800', color: '#0047FF' },
   selectSportBtn: { backgroundColor: '#EEF2FF', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
   selectSportBtnText: { flex: 1, color: '#0047FF', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#FFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, maxHeight: '80%' },
+  modalBackdrop: {
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+    zIndex: 9999,
+  },
+  modalCard: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 12,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 24,
+  },
+  handleBar: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalSubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: 2 },
+  closePill: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  closePillText: { fontSize: 14, color: '#374151', fontWeight: '700' },
+  sportBadge: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   modalTitle: { fontSize: 24, fontWeight: '900', color: '#111827' },
   closeBtn: { color: '#6B7280', fontWeight: '700' },
