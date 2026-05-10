@@ -7,6 +7,8 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthState
 import { collection, doc, onSnapshot, query, setDoc, where, getDocs, limit } from 'firebase/firestore';
 import { CheckCircle2, ChevronRight, Activity, Target, Users, Minus, Plus, Search, Home as HomeIcon, History as HistoryIcon, ShieldCheck, Share2, Copy, Trophy, ScanLine, CircleDot, Lock, Mail, Eye, EyeOff } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
+import FootballSetupScreen from './FootballSetupScreen';
+import FootballScoreboardScreen from './FootballScoreboardScreen';
 
 // Dynamic viewer URL - works on localhost and production
 const getViewerUrl = (sessionCode) => {
@@ -215,7 +217,7 @@ function CricketSetupScreen({ onBack, onStartMatch }) {
   );
 }
 
-function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
+function HomeScreen({ user, onStartNew, onStartFootball, onResumeSession, onViewSession }) {
   const [activeTab, setActiveTab] = useState('menu');
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -281,11 +283,18 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
                 <Plus color="#0047FF" size={24} />
               </View>
               <Text style={homeStyles.newMatchTitle}>Start a New Match</Text>
-              <Text style={homeStyles.newMatchDesc}>Initialize professional-grade scoring with custom teams, player rosters, and tournament rules.</Text>
-              <TouchableOpacity style={homeStyles.newMatchBtn} onPress={onStartNew}>
-                <Text style={homeStyles.newMatchBtnText}>BEGIN SESSION</Text>
-                <ChevronRight color="#0047FF" size={16} />
-              </TouchableOpacity>
+              <Text style={homeStyles.newMatchDesc}>Choose your sport and initialize professional-grade scoring with custom teams and rules.</Text>
+              {/* Sport selector */}
+              <View style={homeStyles.sportRow}>
+                <TouchableOpacity style={homeStyles.sportBtn} onPress={onStartNew}>
+                  <Text style={homeStyles.sportBtnEmoji}>🏏</Text>
+                  <Text style={homeStyles.sportBtnLabel}>Cricket</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[homeStyles.sportBtn, { borderColor: '#10B981' }]} onPress={onStartFootball}>
+                  <Text style={homeStyles.sportBtnEmoji}>⚽</Text>
+                  <Text style={[homeStyles.sportBtnLabel, { color: '#10B981' }]}>Football</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={homeStyles.joinCard}>
@@ -576,6 +585,7 @@ export default function App() {
   const [matchSession, setMatchSession] = useState(null);
   const [viewerSessionCode, setViewerSessionCode] = useState('');
   const [sessionCreatedModal, setSessionCreatedModal] = useState(false);
+  const [footballSession, setFootballSession] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -615,6 +625,29 @@ export default function App() {
   const handleViewSessionByCode = (sessionCode) => {
     setViewerSessionCode(sessionCode);
     setScreen('sessionViewer');
+  };
+
+  const handleStartFootballMatch = async (config) => {
+    const sessionCode = await generateUniqueSessionCode();
+    const matchId = `match-${Date.now()}`;
+    const session = {
+      id: matchId,
+      sessionCode,
+      team1: config.team1,
+      team2: config.team2,
+      halfDuration: config.halfDuration,
+      createdAt: Date.now(),
+      createdBy: user?.uid || null,
+    };
+    setFootballSession(session);
+    setDoc(doc(firestoreDb, 'matches', matchId), {
+      meta: { matchId, sport: 'Football', sessionCode, createdBy: user?.uid || null, createdAt: Date.now(), updatedAt: Date.now() },
+      teams: { team1: { name: config.team1 }, team2: { name: config.team2 } },
+      football: { score: { team1: 0, team2: 0 }, elapsedSeconds: 0, half: 1, status: 'live', halfDuration: config.halfDuration },
+      matchState: { status: 'created' },
+      sessionCode,
+    }).catch(e => Alert.alert('Error', e.message));
+    setScreen('footballScoring');
   };
 
   const handleSelectBattingTeam = async (battingTeamKey) => {
@@ -657,7 +690,9 @@ export default function App() {
           screen === 'toss' ? <TossScreen teams={teamSetupData} onBack={() => setScreen('teamPlayerSetup')} onSelectBattingTeam={handleSelectBattingTeam} /> :
           screen === 'liveScoring' ? <LiveScoreboardScreen matchSession={matchSession} onBack={() => setScreen('home')} /> :
           screen === 'sessionViewer' ? <MatchViewerScreen sessionCode={viewerSessionCode} onBack={() => setScreen('home')} /> :
-          <HomeScreen user={user} onStartNew={() => setScreen('cricketSetup')} onResumeSession={handleResumeSession} onViewSession={handleViewSessionByCode} />
+          screen === 'footballSetup' ? <FootballSetupScreen onBack={() => setScreen('home')} onStartMatch={handleStartFootballMatch} /> :
+          screen === 'footballScoring' ? <FootballScoreboardScreen matchSession={footballSession} onBack={() => setScreen('home')} /> :
+          <HomeScreen user={user} onStartNew={() => setScreen('cricketSetup')} onStartFootball={() => setScreen('footballSetup')} onResumeSession={handleResumeSession} onViewSession={handleViewSessionByCode} />
         ) : showSignUp ? <SignUpScreen onToggle={() => setShowSignUp(false)} /> : <SignInScreen onToggle={() => setShowSignUp(true)} />}
 
         {/* Session Created Modal */}
@@ -830,7 +865,11 @@ const setupStyles = StyleSheet.create({
   liveTagText: { color: '#FFF', fontSize: 12, fontWeight: '800', letterSpacing: 1 },
   launchButton: { backgroundColor: '#0047FF', borderRadius: 12, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   launchButtonText: { color: '#FFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
-  launchNote: { fontSize: 11, color: '#6B7280', textAlign: 'center', marginTop: 12, marginBottom: 40 }
+  launchNote: { fontSize: 11, color: '#6B7280', textAlign: 'center', marginTop: 12, marginBottom: 40 },
+  sportRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  sportBtn: { flex: 1, borderWidth: 2, borderColor: '#0047FF', borderRadius: 14, paddingVertical: 16, alignItems: 'center', gap: 4 },
+  sportBtnEmoji: { fontSize: 28 },
+  sportBtnLabel: { fontSize: 14, fontWeight: '800', color: '#0047FF' },
 });
 
 const modalStyles = StyleSheet.create({

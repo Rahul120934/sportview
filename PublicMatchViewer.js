@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { collection, doc, onSnapshot, orderBy, query, where, limit } from 'firebase/firestore';
@@ -79,6 +79,22 @@ export default function PublicMatchViewer({ sessionCode }) {
   const liveSession = activeInnings === 2 ? secondSession : firstSession;
   const matchState = matchData?.matchState || {};
   const isCompleted = matchState.status === 'completed';
+  const sport = matchData?.meta?.sport || 'Cricket';
+
+  // Football live timer
+  const [displaySeconds, setDisplaySeconds] = useState(0);
+  const tickRef = useRef(null);
+  const fbData = matchData?.football || {};
+
+  useEffect(() => {
+    if (sport !== 'Football') return;
+    setDisplaySeconds(fbData.elapsedSeconds || 0);
+    clearInterval(tickRef.current);
+    if (fbData.status === 'live') {
+      tickRef.current = setInterval(() => setDisplaySeconds(s => s + 1), 1000);
+    }
+    return () => clearInterval(tickRef.current);
+  }, [sport, fbData.elapsedSeconds, fbData.status]);
 
   if (loading) return (
     <View style={s.centerState}>
@@ -104,6 +120,74 @@ export default function PublicMatchViewer({ sessionCode }) {
       </View>
     </View>
   );
+
+  // ─── Football Spectator UI ─────────────────────────────────────────────────
+  if (sport === 'Football') {
+    const fbScore = fbData.score || { team1: 0, team2: 0 };
+    const fbStatus = fbData.status || 'live';
+    const fbHalf = fbData.half || 1;
+    const halfDuration = fbData.halfDuration || 45;
+    const team1Name = matchData?.teams?.team1?.name || 'Team A';
+    const team2Name = matchData?.teams?.team2?.name || 'Team B';
+    const formatTime = (secs) => {
+      const m = Math.floor(secs / 60).toString().padStart(2, '0');
+      const ss = (secs % 60).toString().padStart(2, '0');
+      return `${m}:${ss}`;
+    };
+    const periodLabel = fbStatus === 'fulltime' ? 'FULL TIME' : fbHalf === 1 ? '1ST HALF' : '2ND HALF';
+
+    return (
+      <View style={s.container}>
+        <View style={s.topBar}>
+          <View style={s.logoRow}>
+            <Activity color="#0047FF" size={22} />
+            <Text style={s.logoText}>STADIUM LIVE</Text>
+          </View>
+          <View style={s.liveRow}>
+            <View style={[s.liveDot, { backgroundColor: fbStatus === 'fulltime' ? '#10B981' : '#DC2626' }]} />
+            <Text style={[s.liveText, fbStatus === 'fulltime' && { color: '#10B981' }]}>
+              {fbStatus === 'fulltime' ? 'FINAL' : 'LIVE'}
+            </Text>
+          </View>
+        </View>
+        <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+          {/* Football Hero */}
+          <View style={[s.heroCard, { backgroundColor: '#0047FF', paddingVertical: 32 }]}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 1, marginBottom: 4 }}>{periodLabel}</Text>
+            <Text style={{ fontSize: 56, fontWeight: '900', color: '#FFF', letterSpacing: -2, marginBottom: 8 }}>{formatTime(displaySeconds)}</Text>
+            <View style={s.teamsRow}>
+              <View style={s.teamBlock}>
+                <Text style={[s.teamName, { color: 'rgba(255,255,255,0.8)' }]}>{team1Name}</Text>
+                <Text style={[s.teamScore, { color: '#FFF' }]}>{fbScore.team1 || 0}</Text>
+              </View>
+              <View style={s.vsBox}><Text style={[s.vsText, { color: 'rgba(255,255,255,0.5)' }]}>—</Text></View>
+              <View style={s.teamBlock}>
+                <Text style={[s.teamName, { color: 'rgba(255,255,255,0.8)' }]}>{team2Name}</Text>
+                <Text style={[s.teamScore, { color: '#FFF' }]}>{fbScore.team2 || 0}</Text>
+              </View>
+            </View>
+            {lastUpdated && (
+              <View style={[s.updatedRow, { marginTop: 12 }]}>
+                <RefreshCw color="rgba(255,255,255,0.5)" size={10} />
+                <Text style={[s.updatedText, { color: 'rgba(255,255,255,0.5)' }]}>Updated {lastUpdated.toLocaleTimeString()}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.installBanner}>
+            <Text style={s.installTitle}>⚽ Score your own Football matches?</Text>
+            <Text style={s.installDesc}>Download Stadium Live — free cricket & football scoring.</Text>
+            <TouchableOpacity style={s.installBtn} onPress={() => Linking.openURL('https://expo.dev')}>
+              <Download color="#FFF" size={16} />
+              <Text style={s.installBtnText}>Get Stadium Live — It's Free</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      </View>
+    );
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   return (
     <View style={s.container}>
