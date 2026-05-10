@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import {
   collection,
   doc,
@@ -208,7 +209,15 @@ export default function MatchViewerScreen({ sessionCode, onBack }) {
       ) : (
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.scoreCard}>
-            <Text style={styles.sessionCode}>Code: {matchData?.meta?.sessionCode || sessionCode}</Text>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.sessionCode}>Code: {matchData?.meta?.sessionCode || sessionCode}</Text>
+              <View style={{ marginTop: 4, padding: 8, backgroundColor: '#fff', borderRadius: 8, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}>
+                <QRCode
+                  value={`https://sportviewviewer.web.app/match/${matchData?.meta?.sessionCode || sessionCode}`}
+                  size={80}
+                />
+              </View>
+            </View>
             <Text style={styles.matchTitle}>{teams.team1.name} vs {teams.team2.name}</Text>
             <Text style={styles.metaText}>Status: {(matchState.status || 'live').toUpperCase()}</Text>
             <Text style={styles.teamLine}>{liveSession.battingTeam.name} batting now</Text>

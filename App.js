@@ -30,7 +30,7 @@ function createSessionCode(length = 6) {
   return code;
 }
 
-async function generateUniqueSessionCode(length = 12) {
+async function generateUniqueSessionCode(length = 6) {
   // Attempts to generate a code and ensure it doesn't already exist in Firestore.
   // Retries a few times before returning a code (in rare collision cases).
   for (let attempt = 0; attempt < 6; attempt++) {

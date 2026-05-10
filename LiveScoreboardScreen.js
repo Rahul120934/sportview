@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'react-native-qrcode-svg';
 import {
   View,
   Text,
@@ -467,7 +468,18 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
           <Text style={styles.matchTitle}>
             {currentSession.battingTeam.name} vs {currentSession.bowlingTeam.name}
           </Text>
-          {sessionCode ? <Text style={styles.sessionCode}>Session Code: {sessionCode}</Text> : null}
+          {sessionCode ? (
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.sessionCode}>Session Code: {sessionCode}</Text>
+              <View style={{ marginTop: 4, padding: 8, backgroundColor: '#fff', borderRadius: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}>
+                <QRCode
+                  value={`https://sportviewviewer.web.app/match/${sessionCode}`}
+                  size={100}
+                />
+                <Text style={{ textAlign: 'center', fontSize: 10, marginTop: 4, color: '#6B7280' }}>Scan to View Web</Text>
+              </View>
+            </View>
+          ) : null}
           <Text style={styles.metaText}>Innings {activeInnings}</Text>
           <Text style={styles.scoreText}>
             {innings.score.runs}/{innings.score.wickets}
