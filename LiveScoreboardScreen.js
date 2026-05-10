@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import {
   collection,
@@ -17,7 +18,7 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
-import { firestoreDb } from './firebaseConfig';
+import { firestoreDb, auth } from './firebaseConfig';
 import { computeInningsState, createDeliveryEvent } from './cricketScoring';
 
 const scoringButtons = [
@@ -329,6 +330,16 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
 
   const recordDelivery = (type, value = 0) => {
     if (inningsClosed) return;
+    const currentUid = auth?.currentUser?.uid || null;
+    const ownerUid = matchData?.meta?.createdBy || matchSession?.createdBy || null;
+    if (!currentUid) {
+      Alert.alert('Not signed in', 'You must be signed in to record deliveries.');
+      return;
+    }
+    if (ownerUid && currentUid !== ownerUid) {
+      Alert.alert('Unauthorized', 'Only the match creator can record deliveries.');
+      return;
+    }
     const delivery = createDeliveryEvent(
       type,
       value,
@@ -339,7 +350,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
       ...delivery,
       innings: activeInnings,
       sequence: currentDeliveries.length + 1,
-      scorerId: createdBy,
+      scorerId: currentUid || createdBy,
       updatedAt: Date.now(),
     };
     setDoc(
@@ -353,6 +364,12 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
   const undoLastBall = () => {
     const lastDelivery = currentDeliveries[currentDeliveries.length - 1];
     if (!lastDelivery) return;
+    const currentUid = auth?.currentUser?.uid || null;
+    const ownerUid = matchData?.meta?.createdBy || matchSession?.createdBy || null;
+    if (!currentUid || (ownerUid && currentUid !== ownerUid)) {
+      Alert.alert('Unauthorized', 'Only the match creator can undo deliveries.');
+      return;
+    }
     deleteDoc(doc(firestoreDb, 'matches', matchId, 'deliveries', lastDelivery.id)).catch(
       (error) => {
         console.warn('Undo delivery failed', error);
@@ -364,6 +381,12 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
     if (!editingDeliveryId) return;
     const existingDelivery = currentDeliveries.find((delivery) => delivery.id === editingDeliveryId);
     if (!existingDelivery) return;
+    const currentUid = auth?.currentUser?.uid || null;
+    const ownerUid = matchData?.meta?.createdBy || matchSession?.createdBy || null;
+    if (!currentUid || (ownerUid && currentUid !== ownerUid)) {
+      Alert.alert('Unauthorized', 'Only the match creator can edit deliveries.');
+      return;
+    }
     const editedDelivery = {
       ...createDeliveryEvent(
         type,
@@ -374,7 +397,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
       id: existingDelivery.id,
       innings: existingDelivery.innings || activeInnings,
       sequence: existingDelivery.sequence || currentDeliveries.length,
-      scorerId: existingDelivery.scorerId || createdBy,
+      scorerId: existingDelivery.scorerId || currentUid || createdBy,
       createdAt: existingDelivery.createdAt,
       updatedAt: Date.now(),
     };
@@ -389,6 +412,12 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
 
   const deleteDelivery = () => {
     if (!editingDeliveryId) return;
+    const currentUid = auth?.currentUser?.uid || null;
+    const ownerUid = matchData?.meta?.createdBy || matchSession?.createdBy || null;
+    if (!currentUid || (ownerUid && currentUid !== ownerUid)) {
+      Alert.alert('Unauthorized', 'Only the match creator can delete deliveries.');
+      return;
+    }
     deleteDoc(doc(firestoreDb, 'matches', matchId, 'deliveries', editingDeliveryId)).catch(
       (error) => {
         console.warn('Delivery delete failed', error);
@@ -557,7 +586,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
             <TextInput
               style={styles.customInput}
               placeholder="Enter runs (e.g. 5)"
-              placeholderTextColor="#777"
+              placeholderTextColor="#9CA3AF"
               keyboardType="numeric"
               value={customScoreValue}
               onChangeText={setCustomScoreValue}
@@ -584,7 +613,7 @@ export default function LiveScoreboardScreen({ matchSession, onBack }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#F9FAFB',
     padding: 12,
     paddingTop: 18,
   },
@@ -592,239 +621,292 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   topBar: {
-    color: '#666',
-    fontSize: 11,
+    color: '#6B7280',
+    fontSize: 12,
     fontWeight: 'bold',
-    letterSpacing: 1.5,
-    marginBottom: 10,
+    letterSpacing: 2,
+    marginBottom: 12,
     textAlign: 'center',
   },
   scoreCard: {
     borderWidth: 1,
-    borderColor: '#222',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-    backgroundColor: '#131313',
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    alignItems: 'center',
   },
   matchTitle: {
-    color: '#AAA',
-    fontSize: 13,
+    color: '#4B5563',
+    fontSize: 14,
     marginBottom: 6,
-  },
-  sessionCode: {
-    color: '#FFD700',
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  scoreText: {
-    color: '#00FF87',
-    fontSize: 34,
-    fontWeight: 'bold',
-  },
-  metaText: {
-    color: '#DDD',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  targetText: {
-    color: '#FFD700',
-    fontSize: 13,
-    marginTop: 4,
     fontWeight: '600',
   },
-  closedText: {
-    color: '#ff9d00',
-    marginTop: 6,
-    fontWeight: 'bold',
+  sessionCode: {
+    color: '#D97706',
     fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  winnerText: {
-    color: '#00FF87',
+  scoreText: {
+    color: '#1D4ED8',
+    fontSize: 42,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  metaText: {
+    color: '#6B7280',
+    fontSize: 13,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  targetText: {
+    color: '#D97706',
+    fontSize: 14,
     marginTop: 6,
+    fontWeight: '700',
+  },
+  closedText: {
+    color: '#10B981',
+    marginTop: 8,
     fontWeight: 'bold',
     fontSize: 14,
   },
+  winnerText: {
+    color: '#2563EB',
+    marginTop: 8,
+    fontWeight: '800',
+    fontSize: 16,
+  },
   infoRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 10,
   },
   infoBlock: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#222',
-    borderRadius: 8,
-    padding: 8,
-    backgroundColor: '#111',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   infoLabel: {
-    color: '#888',
-    fontSize: 11,
-    marginBottom: 5,
+    color: '#9CA3AF',
+    fontSize: 12,
+    marginBottom: 6,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   infoValue: {
-    color: '#FFF',
+    color: '#111827',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   infoSubValue: {
-    color: '#AAA',
-    fontSize: 11,
-    marginTop: 3,
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '500',
   },
   playerChipText: {
-    color: '#EEE',
-    fontSize: 12,
-    fontWeight: 'bold',
+    color: '#1F2937',
+    fontSize: 14,
+    fontWeight: '700',
     marginTop: 4,
   },
   buttonGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginVertical: 8,
+    gap: 8,
+    marginVertical: 12,
   },
   scoreButton: {
-    width: '17.5%',
-    minWidth: 56,
-    backgroundColor: '#1A1A1A',
+    width: '18%',
+    minWidth: 58,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
   },
   scoreButtonText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: 'bold',
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '800',
   },
   customButton: {
-    borderColor: '#00FF87',
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 12,
   },
   secondaryButton: {
     flex: 1,
-    backgroundColor: '#222',
-    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   secondaryButtonText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: 'bold',
+    color: '#4B5563',
+    fontSize: 14,
+    fontWeight: '700',
   },
   disabledButton: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
   sectionTitle: {
-    color: '#AAA',
+    color: '#4B5563',
     fontSize: 12,
-    marginTop: 4,
-    marginBottom: 4,
-    fontWeight: 'bold',
+    marginTop: 8,
+    marginBottom: 8,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   timelineRow: {
-    marginBottom: 6,
-    maxHeight: 38,
+    marginBottom: 16,
+    maxHeight: 44,
   },
   timelineBall: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 6,
-    width: 32,
-    height: 32,
+    borderColor: '#D1D5DB',
+    borderRadius: 18,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
   },
   wicketBall: {
-    borderColor: '#e94560',
-    backgroundColor: '#35151b',
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
   },
   timelineBallText: {
-    color: '#FFF',
-    fontWeight: 'bold',
+    color: '#111827',
+    fontWeight: '800',
+    fontSize: 14,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#121212',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    padding: 12,
-    maxHeight: '75%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
   },
   modalTitle: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 16,
+    textAlign: 'center',
   },
   modalList: {
-    maxHeight: 300,
+    maxHeight: 340,
   },
   modalOption: {
-    paddingVertical: 10,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#232323',
+    borderBottomColor: '#F3F4F6',
   },
   modalOptionText: {
-    color: '#FFF',
-    fontSize: 14,
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   modalDelete: {
-    marginTop: 8,
-    backgroundColor: '#3A1518',
-    borderRadius: 6,
-    paddingVertical: 10,
+    marginTop: 12,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   modalDeleteText: {
-    color: '#ff7b8d',
-    fontWeight: 'bold',
+    color: '#EF4444',
+    fontWeight: '700',
+    fontSize: 15,
   },
   modalCancel: {
-    marginTop: 10,
-    backgroundColor: '#222',
-    borderRadius: 6,
-    paddingVertical: 10,
+    marginTop: 12,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   modalCancelText: {
-    color: '#FFF',
-    fontWeight: 'bold',
+    color: '#4B5563',
+    fontWeight: '700',
+    fontSize: 15,
   },
   customInput: {
     borderWidth: 1,
-    borderColor: '#2c2c2c',
-    borderRadius: 8,
-    color: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    marginVertical: 10,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    color: '#111827',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginVertical: 16,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   modalConfirm: {
-    backgroundColor: '#00FF87',
-    borderRadius: 6,
-    paddingVertical: 10,
+    backgroundColor: '#2563EB',
+    borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   modalConfirmText: {
-    color: '#000',
+    color: '#FFFFFF',
     fontWeight: 'bold',
+    fontSize: 16,
   },
 });

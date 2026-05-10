@@ -82,7 +82,7 @@ export default function TeamPlayerSetupScreen({ config, onBack, onComplete }) {
         <TextInput
           style={styles.input}
           placeholder="Enter team name"
-          placeholderTextColor="#444"
+          placeholderTextColor="#9CA3AF"
           value={team1Name}
           onChangeText={setTeam1Name}
         />
@@ -94,7 +94,7 @@ export default function TeamPlayerSetupScreen({ config, onBack, onComplete }) {
         <TextInput
           style={styles.input}
           placeholder="Enter team name"
-          placeholderTextColor="#444"
+          placeholderTextColor="#9CA3AF"
           value={team2Name}
           onChangeText={setTeam2Name}
         />
@@ -135,7 +135,7 @@ export default function TeamPlayerSetupScreen({ config, onBack, onComplete }) {
           <TextInput
             style={styles.addInput}
             placeholder="Player name"
-            placeholderTextColor="#444"
+            placeholderTextColor="#9CA3AF"
             value={newPlayerName}
             onChangeText={setNewPlayerName}
             onSubmitEditing={handleAddPlayer}
@@ -181,14 +181,14 @@ export default function TeamPlayerSetupScreen({ config, onBack, onComplete }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 24,
   },
   topBar: {
-    color: '#666',
-    fontSize: 12,
+    color: '#6B7280',
+    fontSize: 13,
     fontWeight: 'bold',
     letterSpacing: 2,
     marginBottom: 12,
@@ -197,142 +197,168 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   label: {
-    color: '#666',
+    color: '#4B5563',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 4,
   },
   input: {
-    color: '#fff',
-    fontSize: 14,
+    color: '#111827',
+    fontSize: 16,
     fontWeight: 'bold',
-    paddingVertical: 4,
+    paddingVertical: 8,
     paddingHorizontal: 0,
   },
   inputUnderline: {
     height: 2,
-    backgroundColor: '#00FF87',
+    backgroundColor: '#2563EB',
     marginTop: 2,
+    borderRadius: 1,
   },
   pillToggle: {
     flexDirection: 'row',
-    borderRadius: 4,
-    overflow: 'hidden',
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+    padding: 4,
   },
   pillOption: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
+    borderRadius: 8,
   },
   pillActive: {
-    backgroundColor: '#00FF87',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   pillText: {
-    color: '#666',
-    fontSize: 12,
+    color: '#6B7280',
+    fontSize: 13,
     fontWeight: 'bold',
   },
   pillTextActive: {
-    color: '#000',
+    color: '#2563EB',
   },
   countText: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    marginBottom: 8,
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 12,
   },
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
   addInput: {
     flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    paddingVertical: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: '#444',
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '600',
+    paddingVertical: 10,
     marginRight: 12,
   },
   addButton: {
-    backgroundColor: '#00FF87',
+    backgroundColor: '#2563EB',
     paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 4,
+    paddingHorizontal: 16,
+    borderRadius: 8,
   },
   addButtonText: {
-    color: '#000',
-    fontSize: 11,
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: 'bold',
   },
   playerList: {
-    height: '50%',
-    marginBottom: 8,
+    flex: 1,
+    marginBottom: 16,
   },
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 4,
-    marginBottom: 6,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   playerNumberBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#00FF87',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   playerNumberText: {
-    color: '#000',
-    fontSize: 11,
+    color: '#2563EB',
+    fontSize: 12,
     fontWeight: 'bold',
   },
   playerName: {
     flex: 1,
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
   },
   removeText: {
-    color: '#e94560',
-    fontSize: 20,
-    fontWeight: 'bold',
+    color: '#EF4444',
+    fontSize: 24,
+    fontWeight: '300',
     paddingHorizontal: 4,
   },
   emptyText: {
-    color: '#444',
+    color: '#9CA3AF',
     textAlign: 'center',
-    marginTop: 20,
-    fontSize: 14,
+    marginTop: 24,
+    fontSize: 15,
+    fontWeight: '500',
   },
   startButton: {
-    backgroundColor: '#00FF87',
+    backgroundColor: '#2563EB',
     paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 8,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   startButtonText: {
-    color: '#000',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 1,
   },
   backLink: {
-    color: '#666',
+    color: '#6B7280',
     textAlign: 'center',
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

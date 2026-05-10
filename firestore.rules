@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Matches collection
+    match /matches/{matchId} {
+      // Allow anyone to read match documents (viewer flow relies on session codes).
+      // Adjust this if you want to restrict viewing only to authenticated users.
+      allow read: if true;
+
+      // Allow creating a match only if the requester is authenticated and the
+      // match's meta.createdBy field equals the authenticated user.
+      allow create: if request.auth != null
+        && request.resource.data.meta is map
+        && request.resource.data.meta.createdBy == request.auth.uid;
+
+      // Allow updating/deleting a match only to the creator (owner) of the match.
+      allow update, delete: if request.auth != null
+        && resource.data.meta is map
+        && resource.data.meta.createdBy == request.auth.uid;
+
+      // Deliveries subcollection rules
+      match /deliveries/{deliveryId} {
+        // Deliveries can be read by anyone (viewer needs timeline).
+        allow read: if true;
+
+        // Only the match creator (owner) may create, update or delete deliveries.
+        // This prevents arbitrary authenticated users from hijacking a match.
+        allow create: if request.auth != null
+          && exists(/databases/$(database)/documents/matches/$(matchId))
+          && get(/databases/$(database)/documents/matches/$(matchId)).data.meta.createdBy == request.auth.uid;
+
+        allow update, delete: if request.auth != null
+          && exists(/databases/$(database)/documents/matches/$(matchId))
+          && get(/databases/$(database)/documents/matches/$(matchId)).data.meta.createdBy == request.auth.uid;
+      }
+    }
+  }
+}

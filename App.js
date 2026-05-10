@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, SafeAreaView, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { auth, firestoreDb } from './firebaseConfig';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, setDoc, where, getDocs, limit } from 'firebase/firestore';
 import TeamPlayerSetupScreen from './TeamPlayerSetupScreen';
 import TossScreen from './TossScreen';
 import LiveScoreboardScreen from './LiveScoreboardScreen';
@@ -30,8 +30,33 @@ function formatSessionTime(timestamp) {
   return new Date(timestamp).toLocaleString();
 }
 
-function createSessionCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+function createSessionCode(length = 6) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < length; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return code;
+}
+
+async function generateUniqueSessionCode(length = 12) {
+  // Attempts to generate a code and ensure it doesn't already exist in Firestore.
+  // Retries a few times before returning a code (in rare collision cases).
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const candidate = createSessionCode(length);
+    try {
+      const q = query(
+        collection(firestoreDb, 'matches'),
+        where('meta.sessionCode', '==', candidate),
+        limit(1)
+      );
+      const docs = await getDocs(q);
+      if (docs.empty) return candidate;
+    } catch (e) {
+      // If query fails, fallback to returning the candidate; caller should handle errors.
+      return candidate;
+    }
+  }
+  // Fallback if all attempts collide (extremely unlikely)
+  return createSessionCode(length);
 }
 
 function SportSelectionScreen({ onBack, onSelectSport }) {
@@ -78,7 +103,7 @@ function CricketSetupScreen({ onBack, onStartMatch }) {
         <TextInput
           style={cricketStyles.input}
           placeholder="Enter team name"
-          placeholderTextColor="#444"
+          placeholderTextColor="#9CA3AF"
           value={team1}
           onChangeText={setTeam1}
         />
@@ -90,7 +115,7 @@ function CricketSetupScreen({ onBack, onStartMatch }) {
         <TextInput
           style={cricketStyles.input}
           placeholder="Enter team name"
-          placeholderTextColor="#444"
+          placeholderTextColor="#9CA3AF"
           value={team2}
           onChangeText={setTeam2}
         />
@@ -277,7 +302,7 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
         <View>
           <Text style={styles.subtitle}>Previous sessions</Text>
           {sessionsLoading ? (
-            <ActivityIndicator color="#e94560" />
+            <ActivityIndicator color="#2563EB" />
           ) : sessionsError ? (
             <Text style={styles.emptyHistoryText}>{sessionsError}</Text>
           ) : sessions.length === 0 ? (
@@ -294,7 +319,7 @@ function HomeScreen({ user, onStartNew, onResumeSession, onViewSession }) {
           <TextInput
             style={styles.input}
             placeholder="Example: A1B2C3"
-            placeholderTextColor="#888"
+            placeholderTextColor="#9CA3AF"
             autoCapitalize="characters"
             value={viewerCode}
             onChangeText={(value) => setViewerCode(value.toUpperCase())}
@@ -348,7 +373,7 @@ function SignInScreen({ onToggle }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
-        placeholderTextColor="#888"
+        placeholderTextColor="#9CA3AF"
         keyboardType="email-address"
         autoCapitalize="none"
         value={email}
@@ -357,13 +382,13 @@ function SignInScreen({ onToggle }) {
       <TextInput
         style={styles.input}
         placeholder="Password"
-        placeholderTextColor="#888"
+        placeholderTextColor="#9CA3AF"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
       <TouchableOpacity style={styles.button} onPress={handleSignIn} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In</Text>}
+        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Sign In</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={onToggle}>
         <Text style={styles.link}>Don't have an account? Sign Up</Text>
@@ -387,6 +412,14 @@ function SignUpScreen({ onToggle }) {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
+    const strongPassword = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*]).{8,}$/;
+    if (!strongPassword.test(password)) {
+      Alert.alert(
+        'Weak Password',
+        'Password must be at least 8 characters and include an uppercase letter, a number and a special character.'
+      );
+      return;
+    }
     setLoading(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
@@ -403,7 +436,7 @@ function SignUpScreen({ onToggle }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
-        placeholderTextColor="#888"
+        placeholderTextColor="#9CA3AF"
         keyboardType="email-address"
         autoCapitalize="none"
         value={email}
@@ -412,7 +445,7 @@ function SignUpScreen({ onToggle }) {
       <TextInput
         style={styles.input}
         placeholder="Password"
-        placeholderTextColor="#888"
+        placeholderTextColor="#9CA3AF"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
@@ -420,13 +453,13 @@ function SignUpScreen({ onToggle }) {
       <TextInput
         style={styles.input}
         placeholder="Confirm Password"
-        placeholderTextColor="#888"
+        placeholderTextColor="#9CA3AF"
         secureTextEntry
         value={confirmPassword}
         onChangeText={setConfirmPassword}
       />
       <TouchableOpacity style={styles.button} onPress={handleSignUp} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign Up</Text>}
+        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Sign Up</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={onToggle}>
         <Text style={styles.link}>Already have an account? Sign In</Text>
@@ -505,7 +538,7 @@ export default function App() {
     setScreen('sessionViewer');
   };
 
-  const handleSelectBattingTeam = (battingTeamKey) => {
+  const handleSelectBattingTeam = async (battingTeamKey) => {
     if (!matchConfig || !teamSetupData) return;
 
     const team1Name = (teamSetupData.team1Name || matchConfig.team1 || 'Team 1').trim();
@@ -522,7 +555,7 @@ export default function App() {
       id: `match-${Date.now()}`,
       createdAt: Date.now(),
       createdBy: user?.uid || null,
-      sessionCode: createSessionCode(),
+      sessionCode: await generateUniqueSessionCode(12),
       config: matchConfig,
       teams,
       battingTeamKey,
@@ -590,7 +623,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <View style={[styles.content, (screen === 'cricketSetup' || screen === 'teamPlayerSetup') && { padding: 0, justifyContent: 'flex-start' }]}>
         {user ? (
           screen === 'sportSelect' ? (
@@ -652,7 +685,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f1a',
+    backgroundColor: '#F3F4F6',
   },
   content: {
     flex: 1,
@@ -660,70 +693,89 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   card: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 24,
     borderWidth: 1,
-    borderColor: '#2a2a40',
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   menuCard: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#2a2a40',
+    borderColor: '#E5E7EB',
     maxHeight: '88%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '800',
+    color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#a0a0a0',
+    color: '#6B7280',
     textAlign: 'center',
     marginBottom: 24,
+    fontWeight: '500',
   },
   input: {
-    backgroundColor: '#0f0f1a',
-    color: '#fff',
+    backgroundColor: '#F9FAFB',
+    color: '#111827',
     borderRadius: 10,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2a2a40',
+    borderColor: '#D1D5DB',
     fontSize: 16,
   },
   button: {
-    backgroundColor: '#e94560',
+    backgroundColor: '#2563EB',
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 12,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   buttonSecondary: {
-    backgroundColor: '#2a2a40',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#e94560',
+    borderColor: '#BFDBFE',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   buttonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },
   buttonTextSecondary: {
-    color: '#e94560',
+    color: '#2563EB',
     fontSize: 16,
     fontWeight: 'bold',
   },
   link: {
-    color: '#e94560',
+    color: '#2563EB',
     textAlign: 'center',
     marginTop: 16,
     fontSize: 14,
+    fontWeight: '600',
   },
   linkButton: {
     marginTop: 8,
@@ -731,28 +783,35 @@ const styles = StyleSheet.create({
   menuTabs: {
     flexDirection: 'row',
     borderRadius: 10,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#2a2a40',
+    borderColor: '#E5E7EB',
     overflow: 'hidden',
     marginTop: 12,
     marginBottom: 18,
+    padding: 4,
   },
   menuTab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
-    backgroundColor: '#0f0f1a',
+    borderRadius: 8,
   },
   menuTabActive: {
-    backgroundColor: '#e94560',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   menuTabText: {
-    color: '#a0a0a0',
+    color: '#6B7280',
     fontSize: 14,
     fontWeight: 'bold',
   },
   menuTabTextActive: {
-    color: '#fff',
+    color: '#111827',
   },
   historyList: {
     maxHeight: 360,
@@ -760,173 +819,212 @@ const styles = StyleSheet.create({
   sessionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f0f1a',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#2a2a40',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   sessionInfo: {
     flex: 1,
     paddingRight: 10,
   },
   sessionTitle: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
     marginBottom: 4,
   },
   sessionCode: {
-    color: '#FFD700',
-    fontSize: 11,
+    color: '#D97706',
+    fontSize: 12,
     fontWeight: 'bold',
-    marginBottom: 2,
+    marginBottom: 4,
+    backgroundColor: '#FEF3C7',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   sessionMeta: {
-    color: '#a0a0a0',
-    fontSize: 11,
+    color: '#6B7280',
+    fontSize: 12,
     marginTop: 2,
+    fontWeight: '500',
   },
   continueButton: {
-    backgroundColor: '#e94560',
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    backgroundColor: '#2563EB',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 8,
   },
   continueButtonText: {
-    color: '#fff',
-    fontSize: 12,
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: 'bold',
   },
   emptyHistoryText: {
-    color: '#a0a0a0',
+    color: '#9CA3AF',
     textAlign: 'center',
     paddingVertical: 24,
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '500',
   },
   sportList: {
     maxHeight: 320,
     marginBottom: 8,
   },
   sportButton: {
-    backgroundColor: '#0f0f1a',
+    backgroundColor: '#FFFFFF',
     padding: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#2a2a40',
+    borderColor: '#E5E7EB',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   sportButtonText: {
-    color: '#fff',
+    color: '#111827',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
 });
 
 const cricketStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 24,
   },
   topBar: {
-    color: '#666',
-    fontSize: 12,
+    color: '#6B7280',
+    fontSize: 13,
     fontWeight: 'bold',
     letterSpacing: 2,
     marginBottom: 40,
+    textAlign: 'center',
   },
   field: {
     marginBottom: 32,
   },
   label: {
-    color: '#666',
+    color: '#4B5563',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 8,
   },
   input: {
-    color: '#fff',
-    fontSize: 20,
+    color: '#111827',
+    fontSize: 22,
     fontWeight: 'bold',
     paddingVertical: 8,
     paddingHorizontal: 0,
   },
   inputUnderline: {
     height: 2,
-    backgroundColor: '#00FF87',
+    backgroundColor: '#2563EB',
     marginTop: 4,
+    borderRadius: 1,
   },
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 4,
   },
   stepperButton: {
-    width: 44,
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#444',
+    width: 48,
+    height: 48,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepperText: {
-    color: '#fff',
-    fontSize: 20,
+    color: '#111827',
+    fontSize: 22,
     fontWeight: 'bold',
   },
   stepperValue: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginHorizontal: 24,
-    minWidth: 40,
+    color: '#111827',
+    fontSize: 26,
+    fontWeight: '800',
+    marginHorizontal: 32,
+    minWidth: 44,
     textAlign: 'center',
   },
   pillToggle: {
     flexDirection: 'row',
-    borderRadius: 4,
-    overflow: 'hidden',
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: '#E5E7EB',
+    padding: 4,
   },
   pillOption: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
+    borderRadius: 8,
   },
   pillActive: {
-    backgroundColor: '#00FF87',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   pillText: {
-    color: '#666',
-    fontSize: 12,
+    color: '#6B7280',
+    fontSize: 13,
     fontWeight: 'bold',
   },
   pillTextActive: {
-    color: '#000',
+    color: '#2563EB',
   },
   startButton: {
-    backgroundColor: '#00FF87',
+    backgroundColor: '#2563EB',
     paddingVertical: 18,
     alignItems: 'center',
+    borderRadius: 12,
     marginTop: 'auto',
     marginBottom: 16,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   startButtonText: {
-    color: '#000',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 1,
   },
   backLink: {
-    color: '#666',
+    color: '#6B7280',
     textAlign: 'center',
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
