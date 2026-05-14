@@ -13,7 +13,7 @@ import GenericSetupScreen from './GenericSetupScreen';
 import GenericPointScoreboardScreen from './GenericPointScoreboardScreen';
 
 // Always use the deployed Firebase URL for QR codes so they work when scanned from any device
-const FIREBASE_URL = 'https://gp-hackathon-4d77f.web.app';
+const FIREBASE_URL = 'https://studio-3938795878-22c6e.web.app';
 
 const getViewerUrl = (sessionCode) => {
   // If we're already on the deployed Firebase domain, use that origin
